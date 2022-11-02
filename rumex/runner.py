@@ -4,6 +4,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Protocol, TypeVar
 import functools
+import inspect
 import re
 
 from .parsing.parser import InputFile, ParsedFile, ParserProto, parse
@@ -62,23 +63,28 @@ class Executor(Protocol):
         pass
 
 
-def execute_step(step_, *, sentences_to_functions):
+def execute_step(step_, *, sentences_to_functions, previous_step_return):
     fn_ = sentences_to_functions.prepare_function(step_.sentence)
-    return fn_()
+    return fn_(
+            **previous_step_return,
+            step_data=step_.data,
+    )
 
 
 def execute_scenario(scenario, *, sentences_to_functions):
     executed_steps = []
     failed = False
+    step_return = {}
     for step_ in scenario.steps:
         if failed:
             executed = IgnoredStep(sentence=step_.sentence)
         else:
             try:
-                execute_step(
+                step_return = execute_step(
                         step_,
                         sentences_to_functions=sentences_to_functions,
-                )
+                        previous_step_return=step_return,
+                ) or {}
             except Exception as exc:  # pylint: disable=broad-except
                 failed = True
                 executed = FailedStep(
@@ -163,7 +169,15 @@ class StepMapper:
     def prepare_function(self, sentence):
         for pattern, fn_ in self._pattern_to_fn.items():
             if match_ := pattern.search(sentence):
-                _ = match_
-                return fn_
+                args = match_.groups()
+                spec = inspect.getfullargspec(fn_)
+                mapped_args = [
+                    spec.annotations.get(name, lambda x: x)(value)
+                    for name, value in zip(spec.args, args)
+                ]
+                if 'step_data' in spec.kwonlyargs:
+                    return lambda step_data, **kw: fn_(
+                            *mapped_args, **kw, step_data=step_data)
+                return lambda step_data, **kw: fn_(*mapped_args, **kw)
 
         raise Exception('TODO')

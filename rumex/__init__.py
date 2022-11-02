@@ -1,12 +1,1 @@
-from .runner import run
-
-
-def _name_of(fn_or_cls):
-    return fn_or_cls.__name__
-
-
-__all__ = tuple(map(_name_of, (
-    # ExecutedFile,
-    # InputFile,
-    run,
-)))
+__version__ = '0.1.0'

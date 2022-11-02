@@ -16,6 +16,7 @@ class InputFile:
 class Step:
 
     sentence: str
+    data: type
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -127,6 +128,12 @@ class ScenariosBuilder:
     def create_step(self, sentence):
         self._current_scenario_builder.create_step(sentence)
 
+    def create_step_table(self, column_names):
+        self._current_scenario_builder.create_step_table(column_names)
+
+    def add_step_table_row(self, values):
+        self._current_scenario_builder.add_step_table_row(values)
+
     def get_built(self):
         return tuple(sb.get_built() for sb in self._scenario_builders)
 
@@ -167,14 +174,34 @@ class ScenarioBuilder:
         self._step_builders.append(StepBuilder())
         self._current_step_builder.process_step_sentence(sentence)
 
+    def create_step_table(self, column_names):
+        self._current_step_builder.create_table(column_names)
+
+    def add_step_table_row(self, values):
+        self._current_step_builder.add_table_row(values)
+
 
 class StepBuilder:
 
     def __init__(self):
         self._sentence = None
+        self._table_names = None
+        self._table_rows = []
 
     def process_step_sentence(self, sentence):
         self._sentence = sentence
 
     def get_built(self):
-        return Step(sentence=self._sentence)
+        return Step(
+                sentence=self._sentence,
+                data=tuple(
+                    dict(zip(self._table_names, row, strict=True))
+                    for row in self._table_rows
+                )
+        )
+
+    def create_table(self, column_names):
+        self._table_names = column_names
+
+    def add_table_row(self, values):
+        self._table_rows.append(values)

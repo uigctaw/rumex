@@ -10,7 +10,23 @@ from .state_machine import Transition, CannotParseLine
 
 _DESCRIPTION_DELIMITER_PATTERN = re.compile(r'\s*----+\s*')
 _STEP_PATTERN = re.compile(r'\s*((?:Given|When|Then)\s+.*)')
+_TABLE_ROW_SEPARATOR = '|'
+_TABLE_ROW_PATTERN = re.compile(rf'^\s*\{_TABLE_ROW_SEPARATOR}')
+_TABLE_BREAK_SEPARATOR = '+'
+_TABLE_BREAK_PATTERN = re.compile(rf'^\s*\{_TABLE_BREAK_SEPARATOR}')
 SCENARIO_NAME_PATTERN = re.compile(r'\s*Scenario:\s*(.*)')
+
+
+class TableException(Exception):
+    pass
+
+
+class BadTableLine(TableException):
+    pass
+
+
+class InconsistentTable(TableException):
+    pass
 
 
 class Start(Transition):
@@ -106,6 +122,7 @@ class Step(Transition):
     class _Key(enum.Enum):
         BLANK = enum.auto()
         STEP = enum.auto()
+        TABLE_ROW = enum.auto()
 
     def _get_key(self, line):
         if not line.strip():
@@ -114,12 +131,16 @@ class Step(Transition):
         if _STEP_PATTERN.match(line):
             return self._Key.STEP
 
+        if _TABLE_ROW_PATTERN.match(line):
+            return self._Key.TABLE_ROW
+
         raise CannotParseLine(line)
 
     def __init__(self):
         self._transitions = {
             self._Key.BLANK: self._skip,
             self._Key.STEP: self._start_step,
+            self._Key.TABLE_ROW: self._start_table,
         }
 
     def _skip(self, line, *, builder):
@@ -129,3 +150,75 @@ class Step(Transition):
         step_, = _STEP_PATTERN.match(line).groups()
         builder.create_step(step_)
         return Step()
+
+    def _start_table(self, line, *, builder):
+        col_names = _parse_table_line(line, delimiter=_TABLE_ROW_SEPARATOR)
+        builder.create_step_table(col_names)
+        return StepTable(num_cols=len(col_names))
+
+
+class StepTable(Transition):
+
+    class _Key(enum.Enum):
+        SKIP = enum.auto()
+        TABLE_ROW = enum.auto()
+
+    def _get_key(self, line):
+        if _TABLE_ROW_PATTERN.match(line):
+            return self._Key.TABLE_ROW
+
+        if _TABLE_BREAK_PATTERN.match(line):
+            return self._Key.SKIP
+
+        raise CannotParseLine(line)
+
+    def __init__(self, *, num_cols):
+        self._num_cols = num_cols
+        self._transitions = {
+            self._Key.TABLE_ROW: self._populate_table,
+            self._Key.SKIP: self._skip,
+        }
+
+    def _populate_table(self, line, *, builder):
+        values = _parse_table_line(line, delimiter=_TABLE_ROW_SEPARATOR)
+        if len(values) != self._num_cols:
+            raise InconsistentTable(line)
+        builder.add_step_table_row(values)
+        return self
+
+    def _skip(self, line, *, builder):
+        no_ops = _parse_table_line(line, delimiter=_TABLE_BREAK_SEPARATOR)
+        if len(no_ops) != self._num_cols:
+            raise InconsistentTable(line)
+        return self
+
+
+def _parse_table_line(line, *, delimiter):
+    line = line.strip()
+
+    if len(line) < 2 or line[0] != delimiter or line[-1] != delimiter:
+        raise BadTableLine(line)
+
+    line = line[1:]
+
+    escape_symbol = '\\'
+    values = []
+    current_value = []
+    escape_next_symbol = False
+    for symbol in line:
+        if escape_next_symbol:
+            current_value.append(symbol)
+            escape_next_symbol = False
+        else:
+            if symbol == delimiter:
+                values.append(''.join(current_value).strip())
+                current_value = []
+            elif symbol == escape_symbol:
+                escape_next_symbol = True
+            else:
+                current_value.append(symbol)
+
+    if current_value:  # Can happen if the last delimiter was escaped
+        raise BadTableLine(line)
+
+    return tuple(values)
