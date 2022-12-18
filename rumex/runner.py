@@ -2,8 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Protocol, TypeVar
-import functools
+from typing import Protocol, TypeAlias, TypeVar
 import inspect
 import re
 
@@ -14,8 +13,25 @@ T_co = TypeVar('T_co', covariant=True)
 
 
 @dataclass(frozen=True, kw_only=True)
-class ExecutedStep:
-    pass
+class Step:
+    sentence: str
+
+
+@dataclass(frozen=True, kw_only=True)
+class FailedStep(Step):
+    exception: Exception
+    success = False
+
+
+class PassedStep(Step):
+    success = True
+
+
+class IgnoredStep(Step):
+    success = False
+
+
+ExecutedStep: TypeAlias = FailedStep | PassedStep | IgnoredStep
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -25,10 +41,18 @@ class ExecutedScenario:
     description: str
     steps: tuple[ExecutedStep, ...]
 
-    @property  # type: ignore [misc]
-    @functools.cache  # pylint: disable=method-cache-max-size-none
-    def success(self):
-        return all(step.success for step in self.steps)
+    def __new__(cls, *, steps, **_):
+        if all(s.success for s in steps):
+            return super().__new__(PassedScenario)
+        return super().__new__(FailedScenario)
+
+
+class PassedScenario(ExecutedScenario):
+    success = True
+
+
+class FailedScenario(ExecutedScenario):
+    success = False
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -39,10 +63,18 @@ class ExecutedFile:
     name: str
     description: str
 
-    @property  # type: ignore [misc]
-    @functools.cache  # pylint: disable=method-cache-max-size-none
-    def success(self):
-        return all(scenario.success for scenario in self.scenarios)
+    def __new__(cls, *, scenarios, **_):
+        if all(s.success for s in scenarios):
+            return super().__new__(PassedFile)
+        return super().__new__(FailedFile)
+
+
+class PassedFile(ExecutedFile):
+    success = True
+
+
+class FailedFile(ExecutedFile):
+    success = False
 
 
 class Reporter(Protocol[T_co]):
@@ -102,25 +134,6 @@ def execute_scenario(scenario, *, sentences_to_functions):
     )
 
 
-@dataclass(frozen=True, kw_only=True)
-class Step:
-    sentence: str
-
-
-@dataclass(frozen=True, kw_only=True)
-class FailedStep(Step):
-    exception: Exception
-    success = False
-
-
-class PassedStep(Step):
-    success = True
-
-
-class IgnoredStep(Step):
-    success = False
-
-
 def execute_file(parsed_file: ParsedFile, /, *, steps: StepMapper):
     _ = steps
     executed_scenarios: list[ExecutedScenario] = []
@@ -130,12 +143,19 @@ def execute_file(parsed_file: ParsedFile, /, *, steps: StepMapper):
                 sentences_to_functions=steps,
         )
         executed_scenarios.append(executed_scenario)
+
     return ExecutedFile(
             scenarios=tuple(executed_scenarios),
             uri=parsed_file.uri,
             name=parsed_file.name,
             description=parsed_file.description,
     )
+
+
+def report(files):
+    for file in files:
+        if not file.success:
+            raise AssertionError(file)
 
 
 def run(
@@ -145,7 +165,7 @@ def run(
         parser: ParserProto = parse,
         steps: StepMapper,
         executor: Executor = execute_file,
-        reporter: Reporter[T],
+        reporter: Reporter[T] = report,
 ) -> T:
     parsed = map_(parser, files)
     executed = map_(

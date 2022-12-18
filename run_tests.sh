@@ -1,13 +1,21 @@
 #!/bin/bash
 
-set -e
+set -euo pipefail
 
-poetry run pytest
-poetry run bandit -c pyproject.toml -r .
-poetry run mypy . --show-error-codes
-poetry run flake8 .
-poetry run pylint rumex
-poetry run pylint tests --disable=unbalanced-tuple-unpacking
+echo -e "\nPytest:"
+poetry run pytest ; echo Success!
+echo -e "\nBandit:"
+poetry run bandit -c pyproject.toml -r . ; echo Success!
+echo -e "\nMypy:"
+poetry run mypy . --show-error-codes ; echo Success!
+echo -e "\nFlake8:"
+poetry run flake8 . ; echo Success!
+echo -e "\nPylint rumex:"
+poetry run pylint rumex ; echo Success!
+echo -e "\nPylint tests:"
+poetry run pylint tests --disable=unbalanced-tuple-unpacking ; echo Success!
+echo -e "\nPylint docs:"
+poetry run pylint docs ; echo Success!
 
-echo "SUCCESS!"
+echo -e "\nSUCCESS!"
 

@@ -53,7 +53,8 @@ def test_success():
 
         Given 2
         When we divide it by 2
-        Then we have 1
+        And add 1
+        Then we have 2
     ''')
     uri = 'test_file'
     reporter = Reporter()
@@ -66,11 +67,15 @@ def test_success():
 
     @steps('divide it by 2')
     def when_(*, number):
-        return dict(result=number / 2)
+        return dict(number=number / 2)
 
-    @steps(r'we have 1')
+    @steps(r'And add (\d)')
+    def and__(digit: int, *, number):
+        return dict(result=number + digit)
+
+    @steps(r'we have 2')
     def then_(*, result):
-        assert result == 1
+        assert result == 2
 
     run(
         files=[InputFile(uri=uri, text=text)],
@@ -80,9 +85,10 @@ def test_success():
 
     executed_file, = reporter.reported
     scenario, = executed_file.scenarios
-    given, when, then = scenario.steps
+    given, when, and_, then = scenario.steps
     assert given.success
     assert when.success
+    assert and_.success
     assert then.success
     assert scenario.success
     assert executed_file.success

@@ -1,9 +1,8 @@
 .*
 !.gitignore
+
 *.egg-info
+
 __pycache__/
-msg_store/
-local_store/
-cron.log
-heartbeat.txt
+dist/
 
