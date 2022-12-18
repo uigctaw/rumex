@@ -9,7 +9,7 @@ from .state_machine import Transition, CannotParseLine
 # pylint: disable=unused-argument
 
 _DESCRIPTION_DELIMITER_PATTERN = re.compile(r'\s*----+\s*')
-_STEP_PATTERN = re.compile(r'\s*((?:Given|When|Then)\s+.*)')
+_STEP_PATTERN = re.compile(r'\s*((?:And|Given|When|Then)\s+.*)')
 _TABLE_ROW_SEPARATOR = '|'
 _TABLE_ROW_PATTERN = re.compile(rf'^\s*\{_TABLE_ROW_SEPARATOR}')
 _TABLE_BREAK_SEPARATOR = '+'

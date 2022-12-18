@@ -60,16 +60,21 @@ class Name(Transition):
     class _Key(enum.Enum):
         BLANK = enum.auto()
         DESCRIPTION = enum.auto()
+        SCENARIO_KEYWORD = enum.auto()
 
     def __init__(self):
         self._transitions = {
             self._Key.BLANK: self._skip_line,
+            self._Key.SCENARIO_KEYWORD: self._scenario,
             self._Key.DESCRIPTION: self._add_description,
         }
 
     def _get_key(self, line):
         if not line.strip():
             return self._Key.BLANK
+
+        if SCENARIO_NAME_PATTERN.match(line):
+            return self._Key.SCENARIO_KEYWORD
 
         return self._Key.DESCRIPTION
 
@@ -79,6 +84,10 @@ class Name(Transition):
     def _add_description(self, line, *, builder):
         builder.process_description(line)
         return Description()
+
+    def _scenario(self, line, *, builder):
+        builder.process_scenario_line(line)
+        return Scenarios()
 
 
 class Description(Transition):

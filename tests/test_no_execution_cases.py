@@ -204,3 +204,29 @@ def test_scenario_with_description():
             started and ended by a line of 4 or more continuous minus symbols.
     ''').strip()
     assert scenario.success
+
+
+def test_name_no_description_and_scenario():
+    text = textwrap.dedent('''
+        Name: Test file.
+
+        Scenario: My scenario.
+    ''')
+    uri = 'test_file'
+    reporter = Reporter()
+    run(
+        files=[InputFile(uri=uri, text=text)],
+        reporter=reporter,
+        steps=None,
+    )
+
+    executed, = reporter.reported
+
+    assert executed.uri == uri
+    assert executed.name == 'Test file.'
+    assert executed.description is None
+    assert executed.success
+
+    scenario, = executed.scenarios
+    assert scenario.name == 'My scenario.'
+    assert scenario.success

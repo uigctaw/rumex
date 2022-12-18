@@ -84,8 +84,8 @@ def test_table_with_escaping():
         Given the following stuff:
             | Col \|1 | Col\| 2   |
             +---------+-----------+
-            | ab\|cd  |     AB CD |
-            | efgh    | \| UVW \| |
+            | ab\|cd  |   AB CD\\ |
+            | efgh\   | \| UVW \| |
     ''')
     reporter = Reporter()
     steps = StepMapper()
@@ -93,7 +93,7 @@ def test_table_with_escaping():
     @steps(r'Given the following stuff:')
     def given_(*, step_data):
         assert step_data == (
-                {'Col |1': 'ab|cd', 'Col| 2': 'AB CD'},
+                {'Col |1': 'ab|cd', 'Col| 2': 'AB CD\\'},
                 {'Col |1': 'efgh', 'Col| 2': '| UVW |'},
         )
 
