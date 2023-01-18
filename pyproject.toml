@@ -1,6 +1,7 @@
 [tool.poetry]
 name = "rumex"
 version = "0.2.1"
+
 description = ""
 authors = ["uigctaw <uigctaw@metadata.social>"]
 readme = "README.rst"
