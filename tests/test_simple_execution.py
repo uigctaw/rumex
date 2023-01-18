@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 import textwrap
 
 from rumex.parsing.parser import InputFile
@@ -19,17 +20,20 @@ def test_scenario_is_failed_when_step_fails():
 
     steps = StepMapper()
 
+    run_steps = []
+
     @steps('Given 1')
     def given_1():
-        return dict(number=1)
+        run_steps.append(1)
 
-    @steps('divide by 0')
-    def divide_by_0(number):
-        return number / 0
+    @steps('divide it by 0')
+    def divide_by_0():
+        run_steps.append(2)
+        run_steps[0] / 0  # pylint: disable=pointless-statement
 
     @steps(r'Then the 3rd step')
     def does_not_matter():
-        pass
+        run_steps.append(3)
 
     run(
         files=[InputFile(uri=uri, text=text)],
@@ -37,6 +41,7 @@ def test_scenario_is_failed_when_step_fails():
         steps=steps,
     )
 
+    assert run_steps == [1, 2]
     executed_file, = reporter.reported
     scenario, = executed_file.scenarios
     given, when, then = scenario.steps
@@ -61,26 +66,31 @@ def test_success():
 
     steps = StepMapper()
 
+    @dataclass
+    class Context:
+        value: float = None
+
     @steps('Given 2')
-    def given_():
-        return dict(number=2)
+    def given_(*, context):
+        context.value = 2
 
     @steps('divide it by 2')
-    def when_(*, number):
-        return dict(number=number / 2)
+    def when_(*, context):
+        context.value /= 2
 
     @steps(r'And add (\d)')
-    def and__(digit: int, *, number):
-        return dict(result=number + digit)
+    def and__(digit: int, *, context):
+        context.value += digit
 
     @steps(r'we have 2')
-    def then_(*, result):
-        assert result == 2
+    def then_(*, context):
+        assert context.value == 2
 
     run(
         files=[InputFile(uri=uri, text=text)],
         reporter=reporter,
         steps=steps,
+        context_maker=Context,
     )
 
     executed_file, = reporter.reported

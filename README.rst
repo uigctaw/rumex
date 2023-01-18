@@ -4,7 +4,7 @@ Rumex
 
 `Behaviour Driven Development`_ (BDD) testing library.
 
-Rumex is a lightweight library alternative to an existing framework `behave`_.
+Rumex is a lightweight library alternative to the `behave`_ framework.
 
 
 Basic example
@@ -12,46 +12,52 @@ Basic example
 
 .. code:: python
 
-	import rumex
+    import rumex
 
-	example_file = rumex.InputFile(
-		text='''
-			Name: Example file
+    example_file = rumex.InputFile(
+        text='''
+            Name: Basic example
 
-			Scenario: Simple arithmetics
+            Scenario: Simple arithmetics
 
-				Given an integer 1
-				And an integer 2
-				When addition is performed
-				Then the result is 3
-		''',
-		uri='in place file, just an example',
-	)
+                Given an integer 1
+                And an integer 2
+                When addition is performed
+                Then the result is 3
+        ''',
+        uri='in place file, just an example',
+    )
 
-	steps = rumex.StepMapper()
-
-
-	@steps(r'an integer (\d+)')
-	def store_integer(integer: int, integers=None):
-		integers = integers or []
-		integers.append(integer)
-		return dict(integers=integers)
+    steps = rumex.StepMapper()
 
 
-	@steps(r'addition is performed')
-	def add(integers):
-		return dict(result=sum(integers))
+    class Context:
+
+        def __init__(self):
+            self.integers = []
+            self.sum = None
 
 
-	@steps(r'the result is (\d+)')
-	def check_result(expected_result: int, *, result):
-		assert expected_result == result
+    @steps(r'an integer (\d+)')
+    def store_integer(integer: int, *, context: Context):
+        context.integers.append(integer)
 
 
-	rumex.run(
-		files=[example_file],
-		steps=steps,
-	)
+    @steps(r'addition is performed')
+    def add(*, context: Context):
+        context.sum = sum(context.integers)
+
+
+    @steps(r'the result is (\d+)')
+    def check_result(expected_result: int, *, context: Context):
+        assert expected_result == context.sum
+
+
+    rumex.run(
+        files=[example_file],
+        steps=steps,
+        context_maker=Context,
+    )
 
 
 .. _`Behaviour Driven Development`:
