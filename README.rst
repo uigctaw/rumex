@@ -60,7 +60,10 @@ Basic example
     )
 
 
-For more examples see `docs/examples`_
+More examples
+~~~~~~~~~~~~~
+
+See `docs/examples`_
 
 
 .. _`Behaviour Driven Development`:

@@ -22,7 +22,7 @@ def test_example_given_in_readme_is_same_as_the_one_in_examples_dir():
                 in_example_code = True
                 in_example_code_header = False
             continue
-        if in_example_code and line.startswith('..'):
+        if in_example_code and line and not line.startswith(' '):
             break
         if in_example_code:
             example_code_lines_from_readme.append(line)
