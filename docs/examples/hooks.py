@@ -49,7 +49,7 @@ def add(*, context: Context):
 @steps(r'the result is (\d+)')
 def check_result(expected_result: int, *, context: Context):
     assert expected_result == context.sum
-    assert context.step_counter == 3
+    assert context.step_counter == 4
 
 
 rumex.run(

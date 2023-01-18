@@ -7,6 +7,19 @@ from .state_machine import file_sm, scenarios_sm
 
 @dataclass(frozen=True, kw_only=True)
 class InputFile:
+    """Container for a test file to be parsed.
+
+    Does not have to represent an actual file.
+    Could be e.g. an entry in a database.
+
+    Params
+    ------
+
+    uri: A unique identifer. If it's a file,
+        this could be a path to this file.
+
+    text: The content of the file.
+    """
 
     uri: str
     text: str
