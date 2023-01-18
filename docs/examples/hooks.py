@@ -2,7 +2,7 @@ import rumex
 
 example_file = rumex.InputFile(
     text='''
-        Name: Basic example
+        Name: Hooks example
 
         Scenario: Simple arithmetics
 
@@ -22,6 +22,18 @@ class Context:
     def __init__(self):
         self.integers = []
         self.sum = None
+        self.step_counter = None
+
+
+@steps.before_scenario
+def before_scenario(context: Context):
+    assert context.step_counter is None
+    context.step_counter = 0
+
+
+@steps.before_step
+def before_step(context: Context):
+    context.step_counter += 1
 
 
 @steps(r'an integer (\d+)')
@@ -37,6 +49,7 @@ def add(*, context: Context):
 @steps(r'the result is (\d+)')
 def check_result(expected_result: int, *, context: Context):
     assert expected_result == context.sum
+    assert context.step_counter == 3
 
 
 rumex.run(

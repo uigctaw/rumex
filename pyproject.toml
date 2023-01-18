@@ -36,6 +36,9 @@ init-hook="import sys; sys.path.append('.')"
         "too-few-public-methods",
     ]
 
+    [tool.pylint.basic_checker]
+    good-names=['i', 'j', 'k', '_', 'fn']
+
 
 [tool.bandit.assert_used]
 skips = ['./tests/*', './docs/*']

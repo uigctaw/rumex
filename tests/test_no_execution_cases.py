@@ -1,7 +1,7 @@
 import textwrap
 
 from rumex.parsing.parser import InputFile
-from rumex.runner import run
+from rumex.runner import run, StepMapper
 
 
 class Reporter:
@@ -20,7 +20,7 @@ def test_empty_file():
     run(
         files=[InputFile(uri=uri, text=text)],
         reporter=reporter,
-        steps=None,
+        steps=StepMapper(),
     )
 
     executed, = reporter.reported
@@ -39,7 +39,7 @@ def test_lone_file_name():
     run(
         files=[InputFile(uri=uri, text=text)],
         reporter=reporter,
-        steps=None,
+        steps=StepMapper(),
     )
 
     executed, = reporter.reported
@@ -72,7 +72,7 @@ def test_file_name_and_description():
         run(
             files=[InputFile(uri=uri, text=text)],
             reporter=reporter,
-            steps=None,
+            steps=StepMapper(),
         )
 
         executed, = reporter.reported
@@ -95,7 +95,7 @@ def test_lone_scenario():
     run(
         files=[InputFile(uri=uri, text=text)],
         reporter=reporter,
-        steps=None,
+        steps=StepMapper(),
     )
 
     executed, = reporter.reported
@@ -120,7 +120,7 @@ def test_description_and_scenario():
     run(
         files=[InputFile(uri=uri, text=text)],
         reporter=reporter,
-        steps=None,
+        steps=StepMapper(),
     )
 
     executed, = reporter.reported
@@ -152,7 +152,7 @@ def test_name_description_and_a_scenario():
     run(
         files=[InputFile(uri=uri, text=text)],
         reporter=reporter,
-        steps=None,
+        steps=StepMapper(),
     )
 
     executed, = reporter.reported
@@ -190,7 +190,7 @@ def test_scenario_with_description():
     run(
         files=[InputFile(uri=uri, text=text)],
         reporter=reporter,
-        steps=None,
+        steps=StepMapper(),
     )
 
     executed, = reporter.reported
@@ -217,7 +217,7 @@ def test_name_no_description_and_scenario():
     run(
         files=[InputFile(uri=uri, text=text)],
         reporter=reporter,
-        steps=None,
+        steps=StepMapper(),
     )
 
     executed, = reporter.reported

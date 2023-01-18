@@ -2,14 +2,18 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Protocol, TypeAlias, TypeVar
+from typing import Callable, Protocol, TypeAlias
 import inspect
 import re
 
 from .parsing.parser import InputFile, ParsedFile, ParserProto, parse
 
-T = TypeVar('T')
-T_co = TypeVar('T_co', covariant=True)
+_STEP_DATA_KWARG = 'step_data'
+_SCENARIO_CONTEXT_KWARG = 'context'
+
+
+class HookAlreadyRegistered(Exception):
+    pass
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -77,10 +81,31 @@ class FailedFile(ExecutedFile):
     success = False
 
 
-class Reporter(Protocol[T_co]):
+@dataclass(frozen=True, kw_only=True)
+class _Hook:
+    name: str
+    fn: Callable
 
-    def __call__(self, executed_files: Iterable[ExecutedFile], /) -> T_co:
-        pass
+
+class _Hooks:
+
+    def __init__(self):
+        self.run_before_step = None
+        self.run_before_scenario = None
+
+    def before_step(self, fn):
+        self._add_hook(fn, 'before_step')
+
+    def before_scenario(self, fn):
+        self._add_hook(fn, 'before_scenario')
+
+    def _add_hook(self, fn, hook_name):
+        run_hook_name = 'run_' + hook_name
+        # pylint: disable=comparison-with-callable
+        if getattr(self, run_hook_name) is None:
+            setattr(self, run_hook_name, _Hook(name=hook_name, fn=fn))
+        else:
+            raise HookAlreadyRegistered(hook_name)
 
 
 class Executor(Protocol):
@@ -91,40 +116,33 @@ class Executor(Protocol):
             /,
             *,
             steps: StepMapper,
+            context_maker,
     ) -> ExecutedFile:
         pass
 
 
-def execute_step(step_, *, sentences_to_functions, previous_step_return):
-    fn_ = sentences_to_functions.prepare_function(step_.sentence)
-    return fn_(
-            **previous_step_return,
-            step_data=step_.data,
-    )
-
-
-def execute_scenario(scenario, *, sentences_to_functions):
+def execute_scenario(
+        scenario,
+        *,
+        scenario_context,
+        step_mapper,
+):
     executed_steps = []
     failed = False
-    step_return = {}
-    for step_ in scenario.steps:
+    for step_sentence, fn in step_mapper.iter_steps(scenario):
         if failed:
-            executed = IgnoredStep(sentence=step_.sentence)
+            executed = IgnoredStep(sentence=step_sentence)
         else:
             try:
-                step_return = execute_step(
-                        step_,
-                        sentences_to_functions=sentences_to_functions,
-                        previous_step_return=step_return,
-                ) or {}
+                fn(**{_SCENARIO_CONTEXT_KWARG: scenario_context})
             except Exception as exc:  # pylint: disable=broad-except
                 failed = True
                 executed = FailedStep(
                         exception=exc,
-                        sentence=step_.sentence,
+                        sentence=step_sentence,
                 )
             else:
-                executed = PassedStep(sentence=step_.sentence)
+                executed = PassedStep(sentence=step_sentence)
         executed_steps.append(executed)
 
     return ExecutedScenario(
@@ -134,13 +152,21 @@ def execute_scenario(scenario, *, sentences_to_functions):
     )
 
 
-def execute_file(parsed_file: ParsedFile, /, *, steps: StepMapper):
+def execute_file(
+        parsed_file: ParsedFile,
+        /,
+        *,
+        context_maker,
+        steps: StepMapper,
+):
     _ = steps
     executed_scenarios: list[ExecutedScenario] = []
     for scenario in parsed_file.scenarios:
+        context = context_maker()
         executed_scenario = execute_scenario(
                 scenario,
-                sentences_to_functions=steps,
+                step_mapper=steps,
+                scenario_context=context,
         )
         executed_scenarios.append(executed_scenario)
 
@@ -164,12 +190,17 @@ def run(
         files: Iterable[InputFile],
         parser: ParserProto = parse,
         steps: StepMapper,
+        context_maker=lambda: None,
         executor: Executor = execute_file,
-        reporter: Reporter[T] = report,
-) -> T:
+        reporter=report,
+):
     parsed = map_(parser, files)
     executed = map_(
-            lambda parsed_file: executor(parsed_file, steps=steps),
+            lambda parsed_file: executor(
+                    parsed_file,
+                    steps=steps,
+                    context_maker=context_maker,
+            ),
             parsed,
     )
     return reporter(executed)
@@ -178,26 +209,52 @@ def run(
 class StepMapper:
 
     def __init__(self):
+        self._hooks = _Hooks()
         self._pattern_to_fn = {}
+        self.before_scenario = self._hooks.before_scenario
+        self.before_step = self._hooks.before_step
 
     def __call__(self, pattern):
         return lambda fn: self._add_step_fn(fn, pattern=pattern)
 
-    def _add_step_fn(self, fn_, /, *, pattern):
-        self._pattern_to_fn[re.compile(pattern)] = fn_
+    def _add_step_fn(self, fn, /, *, pattern):
+        self._pattern_to_fn[re.compile(pattern)] = fn
 
-    def prepare_function(self, sentence):
-        for pattern, fn_ in self._pattern_to_fn.items():
+    def _wrap_mapped_function(self, *, fn_spec, fn, mapped_args, step_data):
+
+        def wrapped(context):
+            kwargs = {}
+            if _STEP_DATA_KWARG in fn_spec.kwonlyargs:
+                kwargs[_STEP_DATA_KWARG] = step_data
+            if _SCENARIO_CONTEXT_KWARG in fn_spec.kwonlyargs:
+                kwargs[_SCENARIO_CONTEXT_KWARG] = context
+            return fn(*mapped_args, **kwargs)
+
+        return wrapped
+
+    def _prepare_step(self, step_):
+        sentence = step_.sentence
+        for pattern, fn in self._pattern_to_fn.items():
             if match_ := pattern.search(sentence):
                 args = match_.groups()
-                spec = inspect.getfullargspec(fn_)
+                spec = inspect.getfullargspec(fn)
                 mapped_args = [
                     spec.annotations.get(name, lambda x: x)(value)
                     for name, value in zip(spec.args, args)
                 ]
-                if 'step_data' in spec.kwonlyargs:
-                    return lambda step_data, **kw: fn_(
-                            *mapped_args, **kw, step_data=step_data)
-                return lambda step_data, **kw: fn_(*mapped_args, **kw)
-
+                return self._wrap_mapped_function(
+                    fn_spec=spec,
+                    fn=fn,
+                    mapped_args=mapped_args,
+                    step_data=step_.data,
+                    )
         raise Exception('TODO')
+
+    def iter_steps(self, scenario):
+        if (hook := self._hooks.run_before_scenario):
+            yield hook.name, hook.fn
+        for step_ in scenario.steps:
+            fn = self._prepare_step(step_)
+            yield step_.sentence, fn
+            if (hook := self._hooks.run_before_step):
+                yield hook.name, hook.fn

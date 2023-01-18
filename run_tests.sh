@@ -15,7 +15,7 @@ poetry run pylint rumex ; echo Success!
 echo -e "\nPylint tests:"
 poetry run pylint tests --disable=unbalanced-tuple-unpacking ; echo Success!
 echo -e "\nPylint docs:"
-poetry run pylint docs ; echo Success!
+poetry run pylint docs --disable="duplicate-code"; echo Success!
 
 echo -e "\nSUCCESS!"
 

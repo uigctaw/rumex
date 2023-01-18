@@ -42,6 +42,9 @@ def test_examples_execute_fine():
         with file.open(encoding='utf8') as fio:
             module_text = fio.read()
             # pylint: disable=exec-used
-            exec(module_text)  # nosec exec_used
+            try:
+                exec(module_text)  # nosec exec_used
+            except Exception as exc:
+                raise type(exc)(file) from exc
             executed += 1
     assert executed  # sanity check
