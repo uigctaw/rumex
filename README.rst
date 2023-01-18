@@ -60,7 +60,12 @@ Basic example
     )
 
 
+For more examples see `docs/examples`_
+
+
 .. _`Behaviour Driven Development`:
   https://en.wikipedia.org/wiki/Behavior-driven_development
 
 .. _`behave`: https://github.com/behave/behave
+
+.. _`docs/examples`: docs/examples
