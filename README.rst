@@ -211,9 +211,6 @@ you can do:
 See documentation of `StepMapperProto`.
 
 
-
-
-
 .. _`Behaviour Driven Development`:
   https://en.wikipedia.org/wiki/Behavior-driven_development
 
