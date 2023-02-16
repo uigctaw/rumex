@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Callable, Protocol, TypeAlias
+from typing import Any, Callable, Protocol, TypeAlias
 import inspect
 import re
 
-from .parsing.parser import InputFile, ParsedFile, ParserProto, parse
+from .parsing.parser import (
+        InputFile, ParsedFile, ParserProto, Scenario, parse)
 
 _STEP_DATA_KWARG = 'step_data'
-_SCENARIO_CONTEXT_KWARG = 'context'
 
 
 class HookAlreadyRegistered(Exception):
@@ -84,7 +84,7 @@ class FailedFile(ExecutedFile):
 @dataclass(frozen=True, kw_only=True)
 class _Hook:
     name: str
-    fn: Callable
+    fn: Callable[[Any], None]
 
 
 class _Hooks:
@@ -108,15 +108,15 @@ class _Hooks:
             raise HookAlreadyRegistered(hook_name)
 
 
-class Executor(Protocol):
+class ExecutorProto(Protocol):
 
     def __call__(
             self,
             parsed: ParsedFile,
             /,
             *,
-            steps: StepMapper,
-            context_maker,
+            steps: StepMapperProto,
+            context_maker: Callable[[], Any] | None,
     ) -> ExecutedFile:
         pass
 
@@ -124,25 +124,25 @@ class Executor(Protocol):
 def execute_scenario(
         scenario,
         *,
-        scenario_context,
-        step_mapper,
+        context,
+        steps,
 ):
     executed_steps = []
     failed = False
-    for step_sentence, fn in step_mapper.iter_steps(scenario):
+    for executable_step in steps.iter_steps(scenario):
         if failed:
-            executed = IgnoredStep(sentence=step_sentence)
+            executed = IgnoredStep(sentence=executable_step.sentence)
         else:
             try:
-                fn(**{_SCENARIO_CONTEXT_KWARG: scenario_context})
+                executable_step(context=context)
             except Exception as exc:  # pylint: disable=broad-except
                 failed = True
                 executed = FailedStep(
                         exception=exc,
-                        sentence=step_sentence,
+                        sentence=executable_step.sentence,
                 )
             else:
-                executed = PassedStep(sentence=step_sentence)
+                executed = PassedStep(sentence=executable_step.sentence)
         executed_steps.append(executed)
 
     return ExecutedScenario(
@@ -156,17 +156,17 @@ def execute_file(
         parsed_file: ParsedFile,
         /,
         *,
-        context_maker,
-        steps: StepMapper,
+        context_maker: Callable[[], Any] | None,
+        steps: StepMapperProto,
 ):
-    _ = steps
+    context_maker = context_maker or (lambda: None)
     executed_scenarios: list[ExecutedScenario] = []
     for scenario in parsed_file.scenarios:
         context = context_maker()
         executed_scenario = execute_scenario(
                 scenario,
-                step_mapper=steps,
-                scenario_context=context,
+                steps=steps,
+                context=context,
         )
         executed_scenarios.append(executed_scenario)
 
@@ -186,35 +186,148 @@ def report(files):
 
 def run(
         *,
-        map_=map,
         files: Iterable[InputFile],
+        steps: StepMapperProto,
+        context_maker: Callable[[], Any] | None = None,
         parser: ParserProto = parse,
-        steps: StepMapper,
-        context_maker=lambda: None,
-        executor: Executor = execute_file,
+        executor: ExecutorProto = execute_file,
         reporter=report,
+        map_=map,
 ):
-    parsed = map_(parser, files)
+    """Rumex entry point for running tests.
+
+    Params
+    ------
+    files: Files to be parsed and executed.
+
+    steps: See `StepMapper` or `StepMapperProto` for more info.
+
+    context_maker:
+        A callable that returns an object that can be passed
+        to step functions.
+
+    parser:
+        A callable that takes `InputFile` and returns `ParsedFile`.
+
+    executor:
+        A callable that takes `ParsedFile`
+        `steps` and `context_maker` and returns `ExecutedFile`.
+
+    reporter:
+        A callable that takes the collection of all executed files.
+        This can be as simple as raising an exception if any
+        of the executed files is a `FailedFile`.
+
+    map_:
+        Must have the same interface as the Python's built-in `map`.
+        Custom implementation might be used to speed up
+        file parsing or execution.
+    """
+    parsed_files = map_(parser, files)
     executed = map_(
             lambda parsed_file: executor(
                     parsed_file,
                     steps=steps,
                     context_maker=context_maker,
             ),
-            parsed,
+            parsed_files,
     )
     return reporter(executed)
 
 
+class ContextCallable(Protocol):
+
+    def __call__(self, context: Any) -> None:
+        ...
+
+
+class ExecutableStep:
+
+    def __init__(self, *, sentence: str, callable_: ContextCallable):
+        self.sentence = sentence
+        self._callable = callable_
+
+    def __call__(self, *, context: Any) -> None:
+        self._callable(context=context)
+
+
+class StepMapperProto(Protocol):
+
+    def iter_steps(self, scenario: Scenario) -> Iterable[ExecutableStep]:
+        """Build callables representing steps of a scenario.
+
+        Each callable takes one argument `context`.
+
+        Params
+        ------
+        scenario: The scenario to which the step callables pertain.
+        """
+
+
 class StepMapper:
+    """Prepare step functions."""
 
     def __init__(self):
         self._hooks = _Hooks()
         self._pattern_to_fn = {}
-        self.before_scenario = self._hooks.before_scenario
-        self.before_step = self._hooks.before_step
 
-    def __call__(self, pattern):
+    def before_scenario(self, callable_: ContextCallable, /):
+        """Register a function to execute at the start of each scenario.
+
+        Params
+        ------
+        callable_: The function to be executed.
+
+        Raises
+        ------
+        HookAlreadyRegistered:
+            When this decorator is used more than once.
+        """
+        return self._hooks.before_scenario(callable_)
+
+    def before_step(self, callable_: ContextCallable, /):
+        """Register a function to execute before each step.
+
+        Params
+        ------
+        callable_: The function to be executed.
+
+        Raises
+        ------
+        HookAlreadyRegistered:
+            When this decorator is used more than once.
+        """
+        return self._hooks.before_step(callable_)
+
+    def __call__(self, pattern: str):
+        """Create decorator for registering steps.
+
+        For example, to register a function:
+
+        ```
+            def say_hello(person, *, context): ...
+        ```
+
+        to match sentence "Then Bob says hello",
+        you can do:
+
+        ```
+            steps = StepMapper()
+
+            @steps(r'(\\w+) says hello')
+            def say_hello(person, *, context):
+                context.get_person(person).say('hello')
+        ```
+
+        Params
+        ------
+        pattern:
+            Regex pattern that will be used to match a sentence.
+
+        Returns
+        -------
+        Decorator for registering a function as a step.
+        """
         return lambda fn: self._add_step_fn(fn, pattern=pattern)
 
     def _add_step_fn(self, fn, /, *, pattern):
@@ -226,8 +339,8 @@ class StepMapper:
             kwargs = {}
             if _STEP_DATA_KWARG in fn_spec.kwonlyargs:
                 kwargs[_STEP_DATA_KWARG] = step_data
-            if _SCENARIO_CONTEXT_KWARG in fn_spec.kwonlyargs:
-                kwargs[_SCENARIO_CONTEXT_KWARG] = context
+            if 'context' in fn_spec.kwonlyargs:
+                kwargs['context'] = context
             return fn(*mapped_args, **kwargs)
 
         return wrapped
@@ -250,11 +363,12 @@ class StepMapper:
                     )
         raise Exception('TODO')
 
-    def iter_steps(self, scenario):
+    def iter_steps(self, scenario: Scenario) -> Iterable[ExecutableStep]:
+        """See documentation of `StepMapperProto`."""
         if (hook := self._hooks.run_before_scenario):
-            yield hook.name, hook.fn
+            yield ExecutableStep(sentence=hook.name, callable_=hook.fn)
         for step_ in scenario.steps:
-            fn = self._prepare_step(step_)
-            yield step_.sentence, fn
             if (hook := self._hooks.run_before_step):
-                yield hook.name, hook.fn
+                yield ExecutableStep(sentence=hook.name, callable_=hook.fn)
+            fn = self._prepare_step(step_)
+            yield ExecutableStep(sentence=step_.sentence, callable_=fn)

@@ -66,6 +66,151 @@ More examples
 See `docs/examples`_
 
 
+API
+---
+
+rumex.run
+~~~~~~~~~
+
+.. code::
+
+    rumex.run(
+        *,
+        files: Iterable[InputFile],
+        steps: StepMapperProto,
+        context_maker: Callable[[], Any] | None = None,
+        parser: ParserProto = rumex.parsing.parser.parse,
+        executor: ExecutorProto = rumex.runner.execute_file,
+        reporter=rumex.runner.report,
+        map_=builtins.map
+    )
+
+Rumex entry point for running tests.
+
+
+.. rubric:: Parameters
+
+- files: Files to be parsed and executed.
+- steps: See `StepMapper` or `StepMapperProto` for more info.
+- context_maker: A callable that returns an object that can be passed to step functions.
+- parser: A callable that takes `InputFile` and returns `ParsedFile`.
+- executor: A callable that takes `ParsedFile` `steps` and `context_maker` and returns `ExecutedFile`.
+- reporter: A callable that takes the collection of all executed files. This can be as simple as raising an exception if any of the executed files is a `FailedFile`.
+- map\_: Must have the same interface as the Python's built-in `map`. Custom implementation might be used to speed up file parsing or execution.
+
+rumex.InputFile
+~~~~~~~~~~~~~~~
+
+Frozen dataclass
+
+.. code::
+
+    rumex.InputFile(
+        *,
+        uri: str,
+        text: str
+    )
+
+Container for a test file to be parsed.
+
+Does not have to represent an actual file.
+Could be e.g. an entry in a database.
+
+
+.. rubric:: Parameters
+
+- uri: A unique identifer. If it's a file, this could be a path to this file.
+- text: The content of the file.
+
+rumex.runner.StepMapper
+~~~~~~~~~~~~~~~~~~~~~~~
+
+Prepare step functions.
+
+Methods
+.......
+
+.. code::
+
+    before_scenario(
+        self,
+        callable_: ContextCallable,
+        /
+    )
+
+Register a function to execute at the start of each scenario.
+
+
+.. rubric:: Parameters
+
+- callable\_: The function to be executed.
+
+----
+
+.. code::
+
+    before_step(
+        self,
+        callable_: ContextCallable,
+        /
+    )
+
+Register a function to execute before each step.
+
+
+.. rubric:: Parameters
+
+- callable\_: The function to be executed.
+
+----
+
+.. code::
+
+    __call__(
+        self,
+        pattern: str
+    )
+
+Create decorator for registering steps.
+
+For example, to register a function:
+
+
+.. code:: python
+
+    def say_hello(person, *, context): ...
+
+
+to match sentence "Then Bob says hello",
+you can do:
+
+
+.. code:: python
+
+        steps = StepMapper()
+
+        @steps(r'(\w+) says hello')
+        def say_hello(person, *, context):
+            context.get_person(person).say('hello')
+
+
+
+.. rubric:: Parameters
+
+- pattern: Regex pattern that will be used to match a sentence.
+
+----
+
+.. code::
+
+    iter_steps(
+        self,
+        scenario: Scenario
+    )
+
+See documentation of `StepMapperProto`.
+
+
 .. _`Behaviour Driven Development`:
   https://en.wikipedia.org/wiki/Behavior-driven_development
 

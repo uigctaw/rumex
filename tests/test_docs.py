@@ -38,12 +38,12 @@ def test_example_given_in_readme_is_same_as_the_one_in_examples_dir():
 
 def test_examples_execute_fine():
     executed = 0
-    for file in EXAMPLES_DIR.glob('*.py'):
+    for file in EXAMPLES_DIR.glob('**/*.py'):
         with file.open(encoding='utf8') as fio:
             module_text = fio.read()
             # pylint: disable=exec-used
             try:
-                exec(module_text)  # nosec exec_used
+                exec(module_text, {'__file__': str(file)})  # nosec exec_used
             except Exception as exc:
                 raise type(exc)(file) from exc
             executed += 1
