@@ -6,12 +6,12 @@ import textwrap
 import typing
 import sys
 
-from doc import NumpyesqueDocstring as Docstring
-
 THIS_DIR = pathlib.Path(__file__).resolve().parent
 PROJECT_DIR = THIS_DIR.parent
 
 sys.path.append(str(PROJECT_DIR))
+
+from docs_builder.doc import NumpyesqueDocstring as Docstring  # noqa: E402
 
 
 def _read_template():
@@ -191,7 +191,8 @@ def _iter_general_description(description):
                         not line.startswith('    ') for line in code_section)
                 indent = '    ' if should_add_indent else ''
                 for line in code_section:
-                    yield indent + line
+                    indent_for_line = indent if line.strip() else ''
+                    yield indent_for_line + line
                 yield ''
                 code_section.clear()
             continue
@@ -269,7 +270,10 @@ def _iter_as_code(text):
     yield '.. code::\n'
     lines = textwrap.dedent(text).splitlines()
     for line in lines:
-        yield '    ' + line
+        if line.strip():
+            yield '    ' + line
+        else:
+            yield ''
 
 
 def save_readme(readme_text):
@@ -277,9 +281,14 @@ def save_readme(readme_text):
         fio.write(readme_text)
 
 
-def main():
+def get_built_text(name):
     template_text = _read_template()
     readme_text = _replace_placeholders(template_text)
+    return readme_text
+
+
+def main():
+    readme_text = get_built_text('TODO')
     save_readme(readme_text)
 
 

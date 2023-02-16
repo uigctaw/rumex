@@ -1,4 +1,8 @@
+import itertools
+import hashlib
 import textwrap
+
+from docs_builder.build import get_built_text
 
 from .test_consistent_version import find_project_root
 
@@ -8,7 +12,7 @@ EXAMPLES_DIR = find_project_root().joinpath('docs/examples')
 def test_example_given_in_readme_is_same_as_the_one_in_examples_dir():
     with find_project_root().joinpath(
             'README.rst').open(encoding='utf8') as fio:
-        readme = fio.read().replace('\t', '    ')
+        readme = fio.read()
 
     example_code_lines_from_readme = []
     in_example_code_header = False
@@ -48,3 +52,20 @@ def test_examples_execute_fine():
                 raise type(exc)(file) from exc
             executed += 1
     assert executed  # sanity check
+
+
+def test_readmes_have_been_reviewed():
+    reviewed = {
+        'README.rst': 'eadb68ab964bfe3934b4932df9a849a77413c97c',
+    }
+    main_readme = find_project_root().joinpath('README.rst')
+
+    for doc in itertools.chain(
+            [main_readme],
+            find_project_root().joinpath('docs').glob('**/*.rst'),
+    ):
+        with doc.open('rb') as fio:
+            text = fio.read()
+        assert reviewed[doc.name] == hashlib.sha1(
+                text, usedforsecurity=False).hexdigest()
+        assert get_built_text(doc.name) == text.decode('utf8')
