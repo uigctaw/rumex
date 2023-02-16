@@ -69,7 +69,7 @@ See `docs/examples`_
 API
 ---
 
-%%>run, InputFile, runner.StepMapper<%%
+%%>run, InputFile, StepMapper, find_input_files<%%
 
 
 .. _`Behaviour Driven Development`:

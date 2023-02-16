@@ -3,6 +3,7 @@ from typing import Protocol
 import textwrap
 
 from .state_machine import file_sm, scenarios_sm
+from .state_machine.state_machine import CannotParseLine
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -63,8 +64,50 @@ def default_parse(
 ) -> ParsedFile:
     lines = input_file.text.splitlines()
 
-    for line in lines:
-        parsed_file_builder.consume_line(line)
+    for line_num, line in enumerate(lines):
+        try:
+            parsed_file_builder.consume_line(line)
+        except CannotParseLine as exc:
+            if line_num == 0:
+                potential_print_lines = range(3)
+            elif line_num == len(lines) - 1:
+                potential_print_lines = range(line_num - 2, line_num + 1)
+            else:
+                potential_print_lines = range(line_num - 1, line_num + 2)
+
+            print_line_nums = [
+                pl + 1 for pl in potential_print_lines if 0 <= pl < len(lines)]
+            print_error_line_num = line_num + 1
+
+            max_line_num_len = max(map(len, map(str, print_line_nums)))
+            error_indicator = 'ERR> '
+
+            printout = []
+
+            and_there_is_more_stuff_line = '...'.rjust(
+                            max_line_num_len + len(error_indicator))
+            if print_line_nums[0] != 1:
+                printout.append(and_there_is_more_stuff_line)
+
+            for line_num in print_line_nums:
+                if line_num == print_error_line_num:
+                    prefix = error_indicator + str(line_num).rjust(
+                                                        max_line_num_len)
+                else:
+                    prefix = str(line_num).rjust(
+                            max_line_num_len + len(error_indicator))
+                printout.append(prefix + ': ' + lines[line_num - 1])
+
+            if print_line_nums[-1] != len(lines):
+                printout.append(and_there_is_more_stuff_line)
+
+            raise CannotParseLine('\n'.join(
+                [
+                    f'Error in {input_file.uri}!',
+                    f'Could not parse line {line_num}:',
+                    '',
+                ] + printout
+            )) from exc
 
     return parsed_file_builder.get_built(uri=input_file.uri)
 

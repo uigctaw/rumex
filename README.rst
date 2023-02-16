@@ -122,8 +122,8 @@ Could be e.g. an entry in a database.
 - uri: A unique identifer. If it's a file, this could be a path to this file.
 - text: The content of the file.
 
-rumex.runner.StepMapper
-~~~~~~~~~~~~~~~~~~~~~~~
+rumex.StepMapper
+~~~~~~~~~~~~~~~~
 
 Prepare step functions.
 
@@ -209,6 +209,28 @@ you can do:
     )
 
 See documentation of `StepMapperProto`.
+
+
+
+
+rumex.find_input_files
+~~~~~~~~~~~~~~~~~~~~~~
+
+.. code::
+
+    rumex.find_input_files(
+        *,
+        root: Path,
+        extension: str
+    )
+
+Find regular files and return them as `InputFile[s]`.
+
+
+.. rubric:: Parameters
+
+- root: Where to start searching recursively.
+- extension: Extension of the files to look for.
 
 
 .. _`Behaviour Driven Development`:
