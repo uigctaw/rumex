@@ -1,9 +1,6 @@
 import textwrap
 
-import pytest
-
-from rumex.parsing.parser import InputFile
-from rumex.parsing.state_machine.state_machine import CannotParseLine
+from rumex.parsing.parser import CannotParseLine, InputFile
 from rumex.runner import run
 
 from .test_no_execution_cases import Reporter
@@ -20,13 +17,15 @@ def test_parsing_error_gives_problem_location_details():
     '''.strip())
 
     uri = 'this is an important identifier'
-    with pytest.raises(CannotParseLine) as exc:
+    msg = ''
+    try:
         run(
             files=[InputFile(uri=uri, text=text)],
             reporter=Reporter(),
             steps=None,
         )
-    msg, = exc.value.args
+    except CannotParseLine as exc:
+        msg, = exc.args
     assert '-> Unexpected line <-' in msg
     assert uri in msg
-    assert 'line 6' in msg
+    assert 'line no. 5' in msg

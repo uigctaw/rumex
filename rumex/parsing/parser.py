@@ -1,9 +1,15 @@
 from dataclasses import dataclass
+from enum import Enum, auto
+from types import MappingProxyType
 from typing import Protocol
 import textwrap
 
-from .state_machine import file_sm, scenarios_sm
-from .state_machine.state_machine import CannotParseLine
+from .table import parse_table_line
+from .tokenizer import Token, iter_tokens
+
+
+class CannotParseLine(Exception):
+    pass
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -56,208 +62,279 @@ class ParserProto(Protocol):
         pass
 
 
-def default_parse(
-            input_file: InputFile,
-            /,
-            *,
-            parsed_file_builder,
+class State(Enum):
+    START = auto()
+    FILE_NAME = auto()
+    FILE_DESCRIPTION = auto()
+    NEW_SCENARIO = auto()
+    STEP = auto()
+    SCENARIO_DESCRIPTION = auto()
+
+
+_default_state_machine = {
+
+    State.START: {
+        Token.NameKW: (
+            State.FILE_NAME, lambda b, fn: b.set_file_name(fn)),
+        Token.BlankLine: (State.START, lambda b, fn: None),
+        Token.ScenarioKW: (
+            State.NEW_SCENARIO, lambda b, sn: b.new_scenario(sn)),
+        Token.Description: (
+            State.FILE_DESCRIPTION,
+            lambda b, desc: b.append_file_description(desc)
+        ),
+        # Step keyword outside of scenario context
+        # does not mean anything special.
+        Token.StepKW: (
+            State.FILE_DESCRIPTION,
+            lambda b, desc: b.append_file_description(desc)
+        ),
+    },
+
+    State.FILE_NAME: {
+        Token.Description: (
+            State.FILE_DESCRIPTION,
+            lambda b, desc: b.append_file_description(desc)
+        ),
+        Token.BlankLine: (State.FILE_NAME, lambda b, fn: None),
+
+        # Step keyword outside of scenario context
+        # does not mean anything special.
+        Token.StepKW: (
+            State.FILE_DESCRIPTION,
+            lambda b, desc: b.append_file_description(desc)
+        ),
+        Token.ScenarioKW: (
+            State.NEW_SCENARIO, lambda b, sn: b.new_scenario(sn)),
+    },
+
+    State.FILE_DESCRIPTION: {
+        Token.BlankLine: (
+            State.FILE_DESCRIPTION,
+            lambda b, desc: b.append_file_description(desc)
+        ),
+        Token.Description: (
+            State.FILE_DESCRIPTION,
+            lambda b, desc: b.append_file_description(desc)
+        ),
+        Token.ScenarioKW: (
+            State.NEW_SCENARIO, lambda b, sn: b.new_scenario(sn)),
+
+        # Step keyword outside of scenario context
+        # does not mean anything special.
+        Token.StepKW: (
+            State.FILE_DESCRIPTION,
+            lambda b, desc: b.append_file_description(desc)
+        ),
+    },
+
+    State.NEW_SCENARIO: {
+        Token.BlankLine: (State.NEW_SCENARIO, lambda b, fn: None),
+        Token.StepKW: (State.STEP, lambda b, snt: b.new_step(snt)),
+        Token.Description: (
+            State.SCENARIO_DESCRIPTION,
+            lambda b, desc: b.append_scenario_description(desc)
+        ),
+    },
+
+    State.SCENARIO_DESCRIPTION: {
+        Token.Description: (
+            State.SCENARIO_DESCRIPTION,
+            lambda b, desc: b.append_scenario_description(desc)
+        ),
+        Token.BlankLine: (
+            State.SCENARIO_DESCRIPTION,
+            lambda b, desc: b.append_scenario_description(desc)
+        ),
+    },
+
+    State.STEP: {
+        Token.StepKW: (State.STEP, lambda b, sentence: b.new_step(sentence)),
+        Token.Description: (
+            State.STEP,
+            lambda b, data: b.add_step_data(data),
+        ),
+        Token.BlankLine: (State.STEP, lambda b, _: None),
+    },
+
+}
+
+
+default_state_machine = MappingProxyType({
+    k: MappingProxyType(v) for k, v in _default_state_machine.items()
+})
+
+
+def parse(
+        input_file: InputFile,
+        *,
+        state_machine=default_state_machine,
+        start_state=State.START,
 ) -> ParsedFile:
-    lines = input_file.text.splitlines()
+    builder = FileBuilder()
+    state = start_state
 
-    for line_num, line in enumerate(lines):
+    previous_token = None
+    tokens = iter_tokens(input_file.text)
+    for token in tokens:
         try:
-            parsed_file_builder.consume_line(line)
-        except CannotParseLine as exc:
-            if line_num == 0:
-                potential_print_lines = range(3)
-            elif line_num == len(lines) - 1:
-                potential_print_lines = range(line_num - 2, line_num + 1)
-            else:
-                potential_print_lines = range(line_num - 1, line_num + 2)
+            state, transition = state_machine[state][type(token)]
+        except KeyError as exc:
+            raise KeyError(f'{state}, {token}') from exc
+        try:
+            transition(builder, token.value)
+        except Exception as exc:
+            exc_msg = _get_exception_msg(
+                    previous_token=previous_token,
+                    token=token,
+                    tokens=tokens,
+                    file_uri=input_file.uri,
+            )
+            raise CannotParseLine(exc_msg) from exc
+        previous_token = token
 
-            print_line_nums = [
-                pl + 1 for pl in potential_print_lines if 0 <= pl < len(lines)]
-            print_error_line_num = line_num + 1
-
-            max_line_num_len = max(map(len, map(str, print_line_nums)))
-            error_indicator = 'ERR> '
-
-            printout = []
-
-            and_there_is_more_stuff_line = '...'.rjust(
-                            max_line_num_len + len(error_indicator))
-            if print_line_nums[0] != 1:
-                printout.append(and_there_is_more_stuff_line)
-
-            for line_num in print_line_nums:
-                if line_num == print_error_line_num:
-                    prefix = error_indicator + str(line_num).rjust(
-                                                        max_line_num_len)
-                else:
-                    prefix = str(line_num).rjust(
-                            max_line_num_len + len(error_indicator))
-                printout.append(prefix + ': ' + lines[line_num - 1])
-
-            if print_line_nums[-1] != len(lines):
-                printout.append(and_there_is_more_stuff_line)
-
-            raise CannotParseLine('\n'.join(
-                [
-                    f'Error in {input_file.uri}!',
-                    f'Could not parse line {line_num}:',
-                    '',
-                ] + printout
-            )) from exc
-
-    return parsed_file_builder.get_built(uri=input_file.uri)
+    return builder.get_built(uri=input_file.uri)
 
 
-def parse(input_file: InputFile, /) -> ParsedFile:
-    return default_parse(
-            input_file,
-            parsed_file_builder=FileBuilder(
-                scenarios_builder=ScenariosBuilder(
-                    state_machine=scenarios_sm.Start(),
-                ),
-                state_machine=file_sm.Start(),
-            ),
+def _get_exception_msg(*, previous_token, token, tokens, file_uri):
+    line_num = token.line_num + 1  # it's 0-based but we want to report 1-based
+
+    context = []
+    if previous_token is not None:
+        context.append((f'{line_num - 1}: ', previous_token.line))
+    context.append((f'ERR> {line_num}: ', token.line))
+    try:
+        next_token = next(tokens)
+    except StopIteration:
+        pass
+    else:
+        context.append((f'{line_num + 1}: ', next_token.line))
+
+    max_prefix_len = max(
+            len(prefix_and_line[0]) for prefix_and_line in context)
+
+    formatted_context = []
+    max_line_len = 80 - max_prefix_len
+    for prefix, line in context:
+        prefix = prefix.rjust(max_prefix_len)
+        if len(line) > max_line_len:
+            line = line[:-3] + '...'
+        formatted_context.append(prefix + line)
+
+    return (
+            f'Error parsing file "{file_uri}"'
+            + f' (line no. {line_num})'
+            + '\n\n'
+            + '\n'.join(formatted_context)
+            + '\n\n'
     )
 
 
-class FileBuilder:
-
-    def __init__(self, *, scenarios_builder, state_machine):
-        self._name = None
-        self._description_lines = []
-        self._scenarios_builder = scenarios_builder
-        self._sm = state_machine
-
-    def process_name(self, name):
-        self._name = name
-
-    def process_description(self, description_line):
-        self._description_lines.append(description_line)
-
-    def process_scenario_line(self, scenario_line):
-        self._scenarios_builder.consume_line(scenario_line)
-
-    def consume_line(self, line):
-        self._sm = self._sm(line, builder=self)
-
-    def _get_description(self):
-        desc_lines = self._description_lines.copy()
-        while desc_lines and not desc_lines[-1].strip():
-            desc_lines.pop()
-        description = textwrap.dedent('\n'.join(desc_lines)).strip() or None
-        return description
-
-    def get_built(self, *, uri):
-        return ParsedFile(
-            name=self._name,
-            description=self._get_description(),
-            scenarios=self._scenarios_builder.get_built(),
-            uri=uri,
-        )
-
-
-class ScenariosBuilder:
-
-    def __init__(self, state_machine):
-        self._sm = state_machine
-        self._scenarios = []
-        self._scenario_builders = []
-
-    @property
-    def _current_scenario_builder(self):
-        return self._scenario_builders[-1]
-
-    def consume_line(self, line):
-        self._sm = self._sm(line, builder=self)
-
-    def process_scenario_name(self, name):
-        self._scenario_builders.append(ScenarioBuilder())
-        self._current_scenario_builder.process_scenario_name(name)
-
-    def process_description_line(self, line):
-        self._current_scenario_builder.process_description_line(line)
-
-    def create_step(self, sentence):
-        self._current_scenario_builder.create_step(sentence)
-
-    def create_step_table(self, column_names):
-        self._current_scenario_builder.create_step_table(column_names)
-
-    def add_step_table_row(self, values):
-        self._current_scenario_builder.add_step_table_row(values)
-
-    def get_built(self):
-        return tuple(sb.get_built() for sb in self._scenario_builders)
-
-
-class ScenarioBuilder:
+class TableBuilder:
 
     def __init__(self):
-        self._name = None
-        self._description_lines = []
-        self._step_builders = []
+        self._header = None
+        self._data = []
 
-    @property
-    def _current_step_builder(self):
-        return self._step_builders[-1]
+    def consume(self, line):
+        table_break_symbols = set('+- ')
+        if set(line) <= table_break_symbols:
+            return
 
-    def process_scenario_name(self, name):
-        self._name = name
+        row = parse_table_line(line, delimiter='|')
+        if self._header is None:
+            self._header = row
+        else:
+            self._data.append(row)
 
     def get_built(self):
-        steps = tuple(sb.get_built() for sb in self._step_builders)
-        return Scenario(
-                name=self._name,
-                description=self._get_description(),
-                steps=steps,
-        )
-
-    def process_description_line(self, line):
-        self._description_lines.append(line)
-
-    def _get_description(self):
-        desc_lines = self._description_lines.copy()
-        while desc_lines and not desc_lines[-1].strip():
-            desc_lines.pop()
-        description = textwrap.dedent('\n'.join(desc_lines)).strip() or None
-        return description
-
-    def create_step(self, sentence):
-        self._step_builders.append(StepBuilder())
-        self._current_step_builder.process_step_sentence(sentence)
-
-    def create_step_table(self, column_names):
-        self._current_step_builder.create_table(column_names)
-
-    def add_step_table_row(self, values):
-        self._current_step_builder.add_table_row(values)
+        return tuple(dict(zip(self._header, row)) for row in self._data)
 
 
 class StepBuilder:
 
-    def __init__(self):
-        self._sentence = None
-        self._table_names = None
-        self._table_rows = []
-
-    def process_step_sentence(self, sentence):
+    def __init__(self, sentence):
         self._sentence = sentence
+        self._table_builder = TableBuilder()
+
+    def add_step_data(self, data):
+        self._table_builder.consume(data)
 
     def get_built(self):
         return Step(
                 sentence=self._sentence,
-                data=tuple(
-                    dict(zip(self._table_names, row, strict=True))
-                    for row in self._table_rows
-                )
+                data=self._table_builder.get_built(),
         )
 
-    def create_table(self, column_names):
-        self._table_names = column_names
 
-    def add_table_row(self, values):
-        self._table_rows.append(values)
+class ScenarioBuilder:
+
+    def __init__(self, name):
+        self._name = name
+        self._step_builders = []
+        self._description = []
+
+    def __getattr__(self, name):
+        try:
+            attr = getattr(self._step_builders[-1], name)
+        except AttributeError as exc:
+            raise AttributeError(name) from exc
+        return attr
+
+    def new_step(self, sentence):
+        self._step_builders.append(StepBuilder(sentence))
+
+    def append_scenario_description(self, line):
+        self._description.append(line)
+
+    def get_built(self):
+        if self._description:
+            formatted_description = textwrap.dedent(
+                    '\n'.join(self._description)).strip()
+        else:
+            formatted_description = None
+
+        return Scenario(
+                name=self._name,
+                description=formatted_description,
+                steps=[builder.get_built() for builder in self._step_builders],
+        )
+
+
+class FileBuilder:
+
+    def __init__(self):
+        self._name = None
+        self._description = []
+        self._scenario_builders = []
+
+    def set_file_name(self, name):
+        self._name = name
+
+    def append_file_description(self, line):
+        self._description.append(line)
+
+    def new_scenario(self, scenario_name):
+        self._scenario_builders.append(ScenarioBuilder(scenario_name))
+
+    def __getattr__(self, name):
+        try:
+            attr = getattr(self._scenario_builders[-1], name)
+        except AttributeError as exc:
+            raise AttributeError(name) from exc
+        return attr
+
+    def get_built(self, *, uri):
+        if self._description:
+            formatted_description = textwrap.dedent(
+                    '\n'.join(self._description)).strip()
+        else:
+            formatted_description = None
+
+        return ParsedFile(
+            name=self._name,
+            description=formatted_description,
+            scenarios=[
+                builder.get_built() for builder in self._scenario_builders],
+            uri=uri,
+        )

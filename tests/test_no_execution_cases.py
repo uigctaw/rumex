@@ -177,13 +177,13 @@ def test_scenario_with_description():
     text = textwrap.dedent('''
         Scenario: Given this scenario.
 
-        ----
-        And a description
+        A text
             going over multiple lines.
 
-                Given here.
-        started and ended by a line of 4 or more continuous minus symbols.
-        ----
+                As shown here.
+
+        Is considered a description, because it does not
+        start with any keywords.
     ''')
     uri = 'test_file'
     reporter = Reporter()
@@ -197,11 +197,13 @@ def test_scenario_with_description():
     scenario, = executed.scenarios
     assert scenario.name == 'Given this scenario.'
     assert scenario.description == textwrap.dedent('''
-            And a description
-                going over multiple lines.
+        A text
+            going over multiple lines.
 
-                    Given here.
-            started and ended by a line of 4 or more continuous minus symbols.
+                As shown here.
+
+        Is considered a description, because it does not
+        start with any keywords.
     ''').strip()
     assert scenario.success
 
