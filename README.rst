@@ -69,6 +69,8 @@ See `docs/examples`_
 API
 ---
 
+For complete API documentation see `docs/api`_
+
 rumex.run
 ~~~~~~~~~
 
@@ -93,8 +95,8 @@ Rumex entry point for running tests.
 - files: Files to be parsed and executed.
 - steps: See `StepMapper` or `StepMapperProto` for more info.
 - context_maker: A callable that returns an object that can be passed to step functions.
-- parser: A callable that takes `InputFile` and returns `ParsedFile`.
-- executor: A callable that takes `ParsedFile` `steps` and `context_maker` and returns `ExecutedFile`.
+- parser: A callable that takes `InputFile` and returns `File`.
+- executor: A callable that takes `File` `steps` and `context_maker` and returns `ExecutedFile`.
 - reporter: A callable that takes the collection of all executed files. This can be as simple as raising an exception if any of the executed files is a `FailedFile`.
 - map\_: Must have the same interface as the Python's built-in `map`. Custom implementation might be used to speed up file parsing or execution.
 
@@ -129,6 +131,10 @@ Prepare step functions.
 
 Methods
 .......
+
+..
+
+----
 
 .. code::
 
@@ -239,3 +245,5 @@ Find regular files and return them as `InputFile[s]`.
 .. _`behave`: https://github.com/behave/behave
 
 .. _`docs/examples`: docs/examples
+
+.. _`docs/api`: docs/api.rst

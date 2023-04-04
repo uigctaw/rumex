@@ -1,3 +1,6 @@
+from collections.abc import Mapping, Sequence
+import ast
+import enum
 import importlib
 import inspect
 import pathlib
@@ -14,14 +17,14 @@ sys.path.append(str(PROJECT_DIR))
 from docs_builder.doc import NumpyesqueDocstring as Docstring  # noqa: E402
 
 
-def _read_template():
-    with THIS_DIR.joinpath('README.rst.template').open(encoding='utf8') as fio:
+def _read_template(source):
+    with source.open(encoding='utf8') as fio:
         return fio.read()
 
 
 def _replace_placeholders(template):
     text = template
-    pattern = re.compile(r'%%>(.*?)<%%')
+    pattern = re.compile(r'<%%(.*?)%%>', flags=re.DOTALL)
     while match_ := re.search(pattern, text):
         items_str, = match_.groups()
         items = re.findall(r'([\w\.]+)', items_str)
@@ -49,25 +52,109 @@ def _get_api(name):
         signature = _get_protocol_signature(obj, name=name)
     elif hasattr(obj, '__dataclass_fields__'):
         signature = _get_dataclass_signature(obj, name=name)
+    elif isinstance(obj, Mapping):
+        signature = _get_mapping_signature(obj, name=name)
+    elif isinstance(obj, Sequence):
+        signature = _get_sequence_signature(obj, name=name)
     elif inspect.isclass(obj):
-        signature = _get_class_signature(obj, name=name)
+        if issubclass(obj, enum.Enum):
+            signature = _get_enum_signature(obj, name=name)
+        else:
+            signature = _get_class_signature(obj, name=name)
     else:
         signature = _get_function_signature(obj, name=name)
     return signature
 
 
+def _get_mapping_signature(mapping, *, name):
+    return '\n'.join(_iter_mapping_signature(mapping, name=name))
+
+
+def _iter_mapping_signature(mapping, *, name):
+    yield name
+    yield '~' * len(name) + '\n'
+    docs = mapping.__doc__
+    if not docs:
+        raise ValueError(f'{mapping} is missing class docstring.')
+    yield docs + '\n'
+    yield 'Items'
+    yield '.....\n'
+
+    for key, value in mapping.items():
+        yield f'- {key}'
+        if isinstance(value, Mapping):
+            yield ''
+            for sub_key, sub_value in value.items():
+                assert isinstance(sub_value, tuple)
+                yield f' - {sub_key}'
+                yield ''
+                for i, sub_sub_value in enumerate(sub_value):
+                    if inspect.isfunction(sub_sub_value):
+                        code = inspect.getsource(sub_sub_value)
+                        yield f'  {i}. :'
+                        yield '\n  .. code:: python\n'
+                        for line in code.splitlines():
+                            yield '    ' + line
+                    else:
+                        yield f'  {i}. {sub_sub_value}'
+                yield ''
+            yield ''
+        else:
+            1/0
+
+
+def _get_sequence_signature(mapping, *, name):
+    return '\n'.join(_iter_sequence_signature(mapping, name=name))
+
+
+def _iter_sequence_signature(sequence, *, name):
+    yield name
+    yield '~' * len(name) + '\n'
+    docs = sequence.__doc__
+    if not docs:
+        raise ValueError(f'{sequence} is missing class docstring.')
+    yield docs + '\n'
+    yield 'Elements'
+    yield '........\n'
+
+    yield ''
+    for i, element in enumerate(sequence):
+        if inspect.isfunction(element):
+            code = inspect.getsource(element)
+            yield f'  {i}:'
+            yield '\n  .. code:: python\n'
+            for line in code.splitlines():
+                yield '    ' + line
+            yield ''
+        else:
+            1/0
+
+
+def _get_enum_signature(enum_, *, name):
+    return '\n'.join(_iter_enum_signature(enum_, name=name))
+
+
+def _iter_enum_signature(enum_, *, name):
+    assert enum_.__bases__ == (enum.Enum,)
+
+    yield name
+    yield '~' * len(name) + '\n'
+    docs = enum_.__doc__
+    if not docs:
+        raise ValueError(f'{enum_} is missing class docstring.')
+    yield docs + '\n'
+    yield 'Elements'
+    yield '........\n'
+
+    yield ''
+    for enumeral in enum_:
+        yield ' - ' + str(enumeral.name)
+
+
 def _get_protocol_signature(proto, *, name):
     attrs = typing._get_protocol_attrs(proto)
-    return _get_protocol_signature_for_attrs(
-            name=name,
-            cls=proto,
-            attrs=attrs,
-    )
-
-
-def _get_protocol_signature_for_attrs(*, cls, attrs, name):
     return '\n'.join(
-            _iter_protocol_signature(cls=cls, attrs=attrs, name=name))
+            _iter_protocol_signature(cls=proto, attrs=attrs, name=name))
 
 
 def _iter_protocol_signature(*, cls, attrs, name):
@@ -109,21 +196,16 @@ def _iter_class_signature(*, cls, name):
     yield cls.__doc__ + '\n'
     yield 'Methods'
     yield '.......\n'
-    first_method = True
+    yield '..\n'
     for attr_name, attr in vars(cls).items():
-        if attr_name in ('__module__', '__doc__', '__dict__', '__weakref__'):
+        if (
+            attr_name in ('__module__', '__doc__', '__dict__', '__weakref__')
+            or attr_name.startswith('_') and not attr.__doc__
+        ):
             continue
-        if attr_name.startswith('_'):
-            if attr.__doc__:
-                if not first_method:
-                    yield '----\n'
-                yield _get_fn_or_dc_signature(attr, name=attr_name) + '\n'
-                first_method = False
-        else:
-            if not first_method:
-                yield '----\n'
-            yield _get_fn_or_dc_signature(attr, name=attr_name) + '\n'
-            first_method = False
+
+        yield '----\n'
+        yield _get_fn_or_dc_signature(attr, name=attr_name) + '\n'
 
 
 def _get_dataclass_signature(dc, *, name):
@@ -153,7 +235,7 @@ def _get_fn_or_dc_signature(obj, *, name):
     for param in sig.parameters.values():
         if param.kind not in accumulator:
             1/0
-        accumulator[param.kind].append(_format_param(param))
+        accumulator[param.kind].append(_format_param(param, obj=obj))
         if param.kind == p.POSITIONAL_ONLY:
             accumulator['slash'] = ['/']
         elif param.kind == p.KEYWORD_ONLY:
@@ -235,7 +317,7 @@ def _format_annotation(annotation):
     return annotation.__qualname__
 
 
-def _format_param(param):
+def _format_param(param, *, obj):
     empty = param.empty
     name = param.name
     default = param.default
@@ -246,19 +328,34 @@ def _format_param(param):
         return f'{name}: {_format_annotation(annotation)}'
 
     if annotation is empty:
-        return f'{name}={_default_to_str(default)}'
+        return f'{name}={_default_to_str(default, name=name, owner=obj)}'
 
     return (
             f'{name}: {_format_annotation(annotation)}'
-            + f' = {_default_to_str(default)}'
+            + f' = {_default_to_str(default, name=name, owner=obj)}'
     )
 
 
-def _default_to_str(default):
+def _default_to_str(default, *, name, owner):
     if default is None:
         return repr(None)
+    if hasattr(default, '__module__'):
+        if hasattr(default, '__name__'):
+            suffix = default.__name__
+        elif hasattr(default, '__class__'):
+            suffix = default.__class__.__qualname__
+        else:
+            ret = repr(default)
+        ret = default.__module__ + '.' + suffix
+    else:
+        fn, = ast.parse(inspect.getsource(owner)).body
+        default_value_name = next(
+            value.id
+            for key, value in zip(fn.args.kwonlyargs, fn.args.kw_defaults)
+            if key.arg == name
+        )
+        ret = owner.__module__ + '.' + default_value_name
 
-    ret = default.__module__ + '.' + default.__name__
     return ret
 
 
@@ -276,20 +373,27 @@ def _iter_as_code(text):
             yield ''
 
 
-def save_readme(readme_text):
-    with PROJECT_DIR.joinpath('README.rst').open('w', encoding='utf8') as fio:
+def save_readme(readme_text, *, target):
+    with target.open('w', encoding='utf8') as fio:
         fio.write(readme_text)
 
 
-def get_built_text(name):
-    template_text = _read_template()
+def get_built_text(source):
+    template_text = _read_template(source)
     readme_text = _replace_placeholders(template_text)
     return readme_text
 
 
 def main():
-    readme_text = get_built_text('TODO')
-    save_readme(readme_text)
+    source_to_target = {
+            'README': 'README',
+            'api': 'docs/api'
+    }
+    for source, target in source_to_target.items():
+        source = THIS_DIR.joinpath(source + '.rst.template')
+        target = PROJECT_DIR.joinpath(target + '.rst')
+        readme_text = get_built_text(source)
+        save_readme(readme_text, target=target)
 
 
 if __name__ == '__main__':

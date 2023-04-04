@@ -1,29 +1,15 @@
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from enum import Enum, auto
 from typing import Protocol
-import textwrap
 
-from .state_machine import file_sm, scenarios_sm
-from .state_machine.state_machine import CannotParseLine
+from .builder import FileBuilder
+from .core import InputFile, File
+from .tokenizer import TokenKind, iter_tokens
 
 
-@dataclass(frozen=True, kw_only=True)
-class InputFile:
-    """Container for a test file to be parsed.
-
-    Does not have to represent an actual file.
-    Could be e.g. an entry in a database.
-
-    Params
-    ------
-
-    uri: A unique identifer. If it's a file,
-        this could be a path to this file.
-
-    text: The content of the file.
-    """
-
-    uri: str
-    text: str
+class CannotParseLine(Exception):
+    pass
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -38,7 +24,7 @@ class Scenario:
 
     name: str
     description: str
-    steps: tuple[Step, ...]
+    steps: Sequence[Step]
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -46,218 +32,217 @@ class ParsedFile:
 
     name: str
     description: str
-    scenarios: list[Scenario]
+    scenarios: Sequence[Scenario]
     uri: str
 
 
 class ParserProto(Protocol):
 
     def __call__(self, input_file: InputFile, /) -> ParsedFile:
-        pass
+        """Text in, object out."""
 
 
-def default_parse(
-            input_file: InputFile,
-            /,
-            *,
-            parsed_file_builder,
-) -> ParsedFile:
-    lines = input_file.text.splitlines()
+class State(Enum):
+    """Possible states of the default state machine."""
 
-    for line_num, line in enumerate(lines):
+    START = auto()
+    FILE_NAME = auto()
+    FILE_DESCRIPTION = auto()
+    NEW_SCENARIO = auto()
+    STEP = auto()
+    SCENARIO_DESCRIPTION = auto()
+
+
+class StateMachine(Mapping):
+    """Represents possible states of a parser.
+
+    This object is a map where keys are `State` enumerals
+    and values are maps where keys are `TokenKind` enumerals
+    and values are 2-tuples of (`State` enumeral, builder callback).
+
+    The "builder callback" objects are functions that take
+    two positional arguments: `builder` and a value extracted
+    from a token of the associated `TokenKind`.
+
+    The parser uses the state machine map in the following way:
+
+    1) Using `current_state` as a key, extracts the eligible
+       state transitions from the state machine map.
+    2) Having token `t`, uses it to extract the 2-tuple
+       from the eligible state transitions.
+    3) Sets `current_state` to the first value of the tuple.
+    4) Executes the callback, passing it a `builder` object
+       and a value extracted from the token `t`.
+    """
+
+    def __init__(self, transitions):
+        self._transitions = transitions
+
+    def __getitem__(self, item):
+        return self._transitions[item]
+
+    def __iter__(self):
+        return iter(self._transitions)
+
+    def __len__(self):
+        return len(self._transitions)
+
+
+def new_scenario(builder, scenario_name):
+    builder.new_scenario(scenario_name)
+
+
+def no_op(*_):
+    pass
+
+
+def set_file_name(builder, file_name):
+    builder.name = file_name
+
+
+def append_file_description(builder, line):
+    builder.description.append(line)
+
+
+def new_step(builder, sentence):
+    builder.current_scenario_builder.new_step(sentence)
+
+
+def append_scenario_description(builder, line):
+    builder.current_scenario_builder.description.append(line)
+
+
+def add_step_data(builder, data):
+    builder.current_scenario_builder.current_step_builder.add_step_data(data)
+
+
+default_state_machine = StateMachine({
+    State.START: {
+        TokenKind.NAME_KW: (State.FILE_NAME, set_file_name),
+        TokenKind.BLANK_LINE: (State.START, no_op),
+        TokenKind.SCENARIO_KW: (State.NEW_SCENARIO, new_scenario),
+        TokenKind.DESCRIPTION: (
+            State.FILE_DESCRIPTION, append_file_description),
+
+        # Step keyword outside of scenario context
+        # does not mean anything special.
+        TokenKind.STEP_KW: (
+            State.FILE_DESCRIPTION, append_file_description),
+    },
+
+    State.FILE_NAME: {
+        TokenKind.DESCRIPTION: (
+            State.FILE_DESCRIPTION, append_file_description),
+        TokenKind.BLANK_LINE: (State.FILE_NAME, no_op),
+
+        # Step keyword outside of scenario context
+        # does not mean anything special.
+        TokenKind.STEP_KW: (
+            State.FILE_DESCRIPTION, append_file_description),
+        TokenKind.SCENARIO_KW: (State.NEW_SCENARIO, new_scenario),
+    },
+
+    State.FILE_DESCRIPTION: {
+        TokenKind.BLANK_LINE: (
+            State.FILE_DESCRIPTION, append_file_description),
+        TokenKind.DESCRIPTION: (
+            State.FILE_DESCRIPTION, append_file_description),
+        TokenKind.SCENARIO_KW: (State.NEW_SCENARIO, new_scenario),
+
+        # Step keyword outside of scenario context
+        # does not mean anything special.
+        TokenKind.STEP_KW: (
+            State.FILE_DESCRIPTION, append_file_description),
+    },
+
+    State.NEW_SCENARIO: {
+        TokenKind.BLANK_LINE: (State.NEW_SCENARIO, no_op),
+        TokenKind.STEP_KW: (State.STEP, new_step),
+        TokenKind.DESCRIPTION: (
+            State.SCENARIO_DESCRIPTION, append_scenario_description),
+    },
+
+    State.SCENARIO_DESCRIPTION: {
+        TokenKind.DESCRIPTION: (
+            State.SCENARIO_DESCRIPTION, append_scenario_description),
+        TokenKind.BLANK_LINE: (
+            State.SCENARIO_DESCRIPTION, append_scenario_description),
+        TokenKind.STEP_KW: (State.STEP, new_step),
+    },
+
+    State.STEP: {
+        TokenKind.STEP_KW: (State.STEP, new_step),
+        TokenKind.DESCRIPTION: (State.STEP, add_step_data),
+        TokenKind.BLANK_LINE: (State.STEP, no_op),
+    },
+
+})
+
+
+def parse(
+        input_file: InputFile,
+        *,
+        state_machine: StateMachine = default_state_machine,
+        make_builder=FileBuilder,
+        token_iterator=iter_tokens,
+) -> File:
+    """Text in, object out.
+
+    """
+    state = State.START
+    builder = make_builder()
+
+    previous_token = None
+    tokens = token_iterator(input_file.text)
+    for token in tokens:
         try:
-            parsed_file_builder.consume_line(line)
-        except CannotParseLine as exc:
-            if line_num == 0:
-                potential_print_lines = range(3)
-            elif line_num == len(lines) - 1:
-                potential_print_lines = range(line_num - 2, line_num + 1)
-            else:
-                potential_print_lines = range(line_num - 1, line_num + 2)
+            state, transition = state_machine[state][token.kind]
+        except KeyError as exc:
+            raise KeyError(f'{state}, {token}') from exc
+        try:
+            transition(builder, token.value)
+        except Exception as exc:
+            exc_msg = _get_exception_msg(
+                    previous_token=previous_token,
+                    token=token,
+                    tokens=tokens,
+                    file_uri=input_file.uri,
+            )
+            raise CannotParseLine(exc_msg) from exc
+        previous_token = token
 
-            print_line_nums = [
-                pl + 1 for pl in potential_print_lines if 0 <= pl < len(lines)]
-            print_error_line_num = line_num + 1
-
-            max_line_num_len = max(map(len, map(str, print_line_nums)))
-            error_indicator = 'ERR> '
-
-            printout = []
-
-            and_there_is_more_stuff_line = '...'.rjust(
-                            max_line_num_len + len(error_indicator))
-            if print_line_nums[0] != 1:
-                printout.append(and_there_is_more_stuff_line)
-
-            for line_num in print_line_nums:
-                if line_num == print_error_line_num:
-                    prefix = error_indicator + str(line_num).rjust(
-                                                        max_line_num_len)
-                else:
-                    prefix = str(line_num).rjust(
-                            max_line_num_len + len(error_indicator))
-                printout.append(prefix + ': ' + lines[line_num - 1])
-
-            if print_line_nums[-1] != len(lines):
-                printout.append(and_there_is_more_stuff_line)
-
-            raise CannotParseLine('\n'.join(
-                [
-                    f'Error in {input_file.uri}!',
-                    f'Could not parse line {line_num}:',
-                    '',
-                ] + printout
-            )) from exc
-
-    return parsed_file_builder.get_built(uri=input_file.uri)
+    return builder.get_built(uri=input_file.uri)
 
 
-def parse(input_file: InputFile, /) -> ParsedFile:
-    return default_parse(
-            input_file,
-            parsed_file_builder=FileBuilder(
-                scenarios_builder=ScenariosBuilder(
-                    state_machine=scenarios_sm.Start(),
-                ),
-                state_machine=file_sm.Start(),
-            ),
+def _get_exception_msg(*, previous_token, token, tokens, file_uri):
+    line_num = token.line_num + 1  # it's 0-based but we want to report 1-based
+
+    context = []
+    if previous_token is not None:
+        context.append((f'{line_num - 1}: ', previous_token.line))
+    context.append((f'ERR> {line_num}: ', token.line))
+    try:
+        next_token = next(tokens)
+    except StopIteration:
+        pass
+    else:
+        context.append((f'{line_num + 1}: ', next_token.line))
+
+    max_prefix_len = max(
+            len(prefix_and_line[0]) for prefix_and_line in context)
+
+    formatted_context = []
+    max_line_len = 80 - max_prefix_len
+    for prefix, line in context:
+        prefix = prefix.rjust(max_prefix_len)
+        if len(line) > max_line_len:
+            line = line[:-3] + '...'
+        formatted_context.append(prefix + line)
+
+    return (
+            f'Error parsing file "{file_uri}"'
+            + f' (line no. {line_num})'
+            + '\n\n'
+            + '\n'.join(formatted_context)
+            + '\n\n'
     )
-
-
-class FileBuilder:
-
-    def __init__(self, *, scenarios_builder, state_machine):
-        self._name = None
-        self._description_lines = []
-        self._scenarios_builder = scenarios_builder
-        self._sm = state_machine
-
-    def process_name(self, name):
-        self._name = name
-
-    def process_description(self, description_line):
-        self._description_lines.append(description_line)
-
-    def process_scenario_line(self, scenario_line):
-        self._scenarios_builder.consume_line(scenario_line)
-
-    def consume_line(self, line):
-        self._sm = self._sm(line, builder=self)
-
-    def _get_description(self):
-        desc_lines = self._description_lines.copy()
-        while desc_lines and not desc_lines[-1].strip():
-            desc_lines.pop()
-        description = textwrap.dedent('\n'.join(desc_lines)).strip() or None
-        return description
-
-    def get_built(self, *, uri):
-        return ParsedFile(
-            name=self._name,
-            description=self._get_description(),
-            scenarios=self._scenarios_builder.get_built(),
-            uri=uri,
-        )
-
-
-class ScenariosBuilder:
-
-    def __init__(self, state_machine):
-        self._sm = state_machine
-        self._scenarios = []
-        self._scenario_builders = []
-
-    @property
-    def _current_scenario_builder(self):
-        return self._scenario_builders[-1]
-
-    def consume_line(self, line):
-        self._sm = self._sm(line, builder=self)
-
-    def process_scenario_name(self, name):
-        self._scenario_builders.append(ScenarioBuilder())
-        self._current_scenario_builder.process_scenario_name(name)
-
-    def process_description_line(self, line):
-        self._current_scenario_builder.process_description_line(line)
-
-    def create_step(self, sentence):
-        self._current_scenario_builder.create_step(sentence)
-
-    def create_step_table(self, column_names):
-        self._current_scenario_builder.create_step_table(column_names)
-
-    def add_step_table_row(self, values):
-        self._current_scenario_builder.add_step_table_row(values)
-
-    def get_built(self):
-        return tuple(sb.get_built() for sb in self._scenario_builders)
-
-
-class ScenarioBuilder:
-
-    def __init__(self):
-        self._name = None
-        self._description_lines = []
-        self._step_builders = []
-
-    @property
-    def _current_step_builder(self):
-        return self._step_builders[-1]
-
-    def process_scenario_name(self, name):
-        self._name = name
-
-    def get_built(self):
-        steps = tuple(sb.get_built() for sb in self._step_builders)
-        return Scenario(
-                name=self._name,
-                description=self._get_description(),
-                steps=steps,
-        )
-
-    def process_description_line(self, line):
-        self._description_lines.append(line)
-
-    def _get_description(self):
-        desc_lines = self._description_lines.copy()
-        while desc_lines and not desc_lines[-1].strip():
-            desc_lines.pop()
-        description = textwrap.dedent('\n'.join(desc_lines)).strip() or None
-        return description
-
-    def create_step(self, sentence):
-        self._step_builders.append(StepBuilder())
-        self._current_step_builder.process_step_sentence(sentence)
-
-    def create_step_table(self, column_names):
-        self._current_step_builder.create_table(column_names)
-
-    def add_step_table_row(self, values):
-        self._current_step_builder.add_table_row(values)
-
-
-class StepBuilder:
-
-    def __init__(self):
-        self._sentence = None
-        self._table_names = None
-        self._table_rows = []
-
-    def process_step_sentence(self, sentence):
-        self._sentence = sentence
-
-    def get_built(self):
-        return Step(
-                sentence=self._sentence,
-                data=tuple(
-                    dict(zip(self._table_names, row, strict=True))
-                    for row in self._table_rows
-                )
-        )
-
-    def create_table(self, column_names):
-        self._table_names = column_names
-
-    def add_table_row(self, values):
-        self._table_rows.append(values)
