@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from typing import Any, Callable, Protocol, TypeAlias
 import inspect
 import re
 
-from .parsing.parser import (
-        InputFile, ParsedFile, ParserProto, Scenario, parse)
+from .parsing.core import InputFile, File, ParserProto, Scenario
+from .parsing.parser import parse
 
 _STEP_DATA_KWARG = 'step_data'
 
@@ -17,21 +17,21 @@ class HookAlreadyRegistered(Exception):
 
 
 @dataclass(frozen=True, kw_only=True)
-class Step:
+class _ExecutedStep:
     sentence: str
 
 
 @dataclass(frozen=True, kw_only=True)
-class FailedStep(Step):
+class FailedStep(_ExecutedStep):
     exception: Exception
     success = False
 
 
-class PassedStep(Step):
+class PassedStep(_ExecutedStep):
     success = True
 
 
-class IgnoredStep(Step):
+class IgnoredStep(_ExecutedStep):
     success = False
 
 
@@ -43,7 +43,7 @@ class ExecutedScenario:
 
     name: str
     description: str
-    steps: tuple[ExecutedStep, ...]
+    steps: Sequence[ExecutedStep]
 
     def __new__(cls, *, steps, **_):
         if all(s.success for s in steps):
@@ -112,13 +112,13 @@ class ExecutorProto(Protocol):
 
     def __call__(
             self,
-            parsed: ParsedFile,
+            parsed: File,
             /,
             *,
             steps: StepMapperProto,
             context_maker: Callable[[], Any] | None,
     ) -> ExecutedFile:
-        pass
+        """Run the tests."""
 
 
 def execute_scenario(
@@ -153,12 +153,14 @@ def execute_scenario(
 
 
 def execute_file(
-        parsed_file: ParsedFile,
+        parsed_file: File,
         /,
         *,
         context_maker: Callable[[], Any] | None,
         steps: StepMapperProto,
 ):
+    """Executed a single test file."""
+
     context_maker = context_maker or (lambda: None)
     executed_scenarios: list[ExecutedScenario] = []
     for scenario in parsed_file.scenarios:
@@ -207,10 +209,10 @@ def run(
         to step functions.
 
     parser:
-        A callable that takes `InputFile` and returns `ParsedFile`.
+        A callable that takes `InputFile` and returns `File`.
 
     executor:
-        A callable that takes `ParsedFile`
+        A callable that takes `File`
         `steps` and `context_maker` and returns `ExecutedFile`.
 
     reporter:

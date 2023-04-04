@@ -1,12 +1,13 @@
 import textwrap
 
 from rumex.parsing.parser import CannotParseLine, InputFile
-from rumex.runner import run
 
 from .test_no_execution_cases import Reporter
 
+# pylint: disable=unbalanced-tuple-unpacking
 
-def test_parsing_error_gives_problem_location_details():
+
+def test_parsing_error_gives_problem_location_details(run, **_):
     text = textwrap.dedent('''
         Scenario: Errors are reported nicely.
 

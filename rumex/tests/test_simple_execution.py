@@ -2,12 +2,13 @@ from dataclasses import dataclass
 import textwrap
 
 from rumex.parsing.parser import InputFile
-from rumex.runner import run, StepMapper
 
 from .test_no_execution_cases import Reporter
 
+# pylint: disable=unbalanced-tuple-unpacking
 
-def test_scenario_is_failed_when_step_fails():
+
+def test_scenario_is_failed_when_step_fails(run, get_step_mapper, **_):
     text = textwrap.dedent('''
         Scenario: 2nd step fails
 
@@ -18,7 +19,7 @@ def test_scenario_is_failed_when_step_fails():
     uri = 'test_file'
     reporter = Reporter()
 
-    steps = StepMapper()
+    steps = get_step_mapper()
 
     run_steps = []
 
@@ -52,7 +53,7 @@ def test_scenario_is_failed_when_step_fails():
     assert not executed_file.success
 
 
-def test_success():
+def test_success(run, get_step_mapper, **_):  # pylint: disable=too-many-locals
     text = textwrap.dedent('''
         Scenario: All good.
 
@@ -64,7 +65,7 @@ def test_success():
     uri = 'test_file'
     reporter = Reporter()
 
-    steps = StepMapper()
+    steps = get_step_mapper()
 
     @dataclass
     class Context:
@@ -104,14 +105,15 @@ def test_success():
     assert executed_file.success
 
 
-def test_parameterized_step_without_type_annotations():
+def test_parameterized_step_without_type_annotations(
+        run, get_step_mapper, **_):
     text = textwrap.dedent('''
         Scenario: No annotations
 
         Given two numbers 1 and 12
     ''')
     reporter = Reporter()
-    steps = StepMapper()
+    steps = get_step_mapper()
 
     @steps(r'Given two numbers (\d+) and (\d+)')
     def given_(num_a, num_b):
@@ -128,14 +130,14 @@ def test_parameterized_step_without_type_annotations():
     assert executed_file.success
 
 
-def test_parameterized_step_with_type_annotations():
+def test_parameterized_step_with_type_annotations(run, get_step_mapper, **_):
     text = textwrap.dedent('''
         Scenario: All annotated
 
         Given two numbers 2 and 13.5
     ''')
     reporter = Reporter()
-    steps = StepMapper()
+    steps = get_step_mapper()
 
     class TimesTwo:
 
@@ -157,14 +159,14 @@ def test_parameterized_step_with_type_annotations():
     assert executed_file.success
 
 
-def test_parameterized_step_with_some_annotations():
+def test_parameterized_step_with_some_annotations(run, get_step_mapper, **_):
     text = textwrap.dedent('''
         Scenario: Some annotated
 
         Given four numbers 1, 2, 3 and 4
     ''')
     reporter = Reporter()
-    steps = StepMapper()
+    steps = get_step_mapper()
 
     @steps(r'Given four numbers (\d), (\d), (\d) and (\d)')
     def given_(a: int, b, c: float, d):  # pylint: disable=invalid-name
@@ -181,3 +183,31 @@ def test_parameterized_step_with_some_annotations():
 
     executed_file, = reporter.reported
     assert executed_file.success
+
+
+def test_scenario_with_a_description_and_a_step(run, get_step_mapper, **_):
+    text = textwrap.dedent('''
+        Scenario: You can have a description in a scenario.
+
+        First a description, then a step.
+
+        Given an integer 5
+    ''')
+    reporter = Reporter()
+    steps = get_step_mapper()
+
+    @steps(r'Given an integer 5')
+    def given_():
+        pass
+
+    run(
+        files=[InputFile(uri='we', text=text)],
+        reporter=reporter,
+        steps=steps,
+    )
+
+    executed_file, = reporter.reported
+    assert executed_file.success
+    scenario, = executed_file.scenarios
+    assert scenario.success
+    assert scenario.description == 'First a description, then a step.'

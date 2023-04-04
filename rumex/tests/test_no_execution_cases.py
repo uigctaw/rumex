@@ -1,7 +1,8 @@
 import textwrap
 
 from rumex.parsing.parser import InputFile
-from rumex.runner import run, StepMapper
+
+# pylint: disable=unbalanced-tuple-unpacking
 
 
 class Reporter:
@@ -13,14 +14,14 @@ class Reporter:
         self.reported.extend(executed_files)
 
 
-def test_empty_file():
+def test_empty_file(run, get_step_mapper, **_):
     text = ''
     uri = 'test_file'
     reporter = Reporter()
     run(
         files=[InputFile(uri=uri, text=text)],
         reporter=reporter,
-        steps=StepMapper(),
+        steps=get_step_mapper(),
     )
 
     executed, = reporter.reported
@@ -32,14 +33,14 @@ def test_empty_file():
     assert not executed.scenarios
 
 
-def test_lone_file_name():
+def test_lone_file_name(run, get_step_mapper, **_):
     text = 'Name: Test file'
     uri = 'test_file'
     reporter = Reporter()
     run(
         files=[InputFile(uri=uri, text=text)],
         reporter=reporter,
-        steps=StepMapper(),
+        steps=get_step_mapper(),
     )
 
     executed, = reporter.reported
@@ -51,7 +52,7 @@ def test_lone_file_name():
     assert not executed.scenarios
 
 
-def test_file_name_and_description():
+def test_file_name_and_description(run, get_step_mapper, **_):
     text1 = '''
         Name: Test file
         This is.
@@ -72,7 +73,7 @@ def test_file_name_and_description():
         run(
             files=[InputFile(uri=uri, text=text)],
             reporter=reporter,
-            steps=StepMapper(),
+            steps=get_step_mapper(),
         )
 
         executed, = reporter.reported
@@ -88,14 +89,14 @@ def test_file_name_and_description():
         assert not executed.scenarios
 
 
-def test_lone_scenario():
+def test_lone_scenario(run, get_step_mapper, **_):
     text = 'Scenario: My scenario'
     uri = 'test_file'
     reporter = Reporter()
     run(
         files=[InputFile(uri=uri, text=text)],
         reporter=reporter,
-        steps=StepMapper(),
+        steps=get_step_mapper(),
     )
 
     executed, = reporter.reported
@@ -108,7 +109,7 @@ def test_lone_scenario():
     assert scenario.success
 
 
-def test_description_and_scenario():
+def test_description_and_scenario(run, get_step_mapper, **_):
     text = '''
                 This file has no name.
 
@@ -120,7 +121,7 @@ def test_description_and_scenario():
     run(
         files=[InputFile(uri=uri, text=text)],
         reporter=reporter,
-        steps=StepMapper(),
+        steps=get_step_mapper(),
     )
 
     executed, = reporter.reported
@@ -137,7 +138,7 @@ def test_description_and_scenario():
     assert scenario.success
 
 
-def test_name_description_and_a_scenario():
+def test_name_description_and_a_scenario(run, get_step_mapper, **_):
     text = textwrap.dedent('''
         Name: Test file.
         And then, we have a description.
@@ -152,7 +153,7 @@ def test_name_description_and_a_scenario():
     run(
         files=[InputFile(uri=uri, text=text)],
         reporter=reporter,
-        steps=StepMapper(),
+        steps=get_step_mapper(),
     )
 
     executed, = reporter.reported
@@ -173,7 +174,7 @@ def test_name_description_and_a_scenario():
     assert scenario.success
 
 
-def test_scenario_with_description():
+def test_scenario_with_description(run, get_step_mapper, **_):
     text = textwrap.dedent('''
         Scenario: Given this scenario.
 
@@ -190,7 +191,7 @@ def test_scenario_with_description():
     run(
         files=[InputFile(uri=uri, text=text)],
         reporter=reporter,
-        steps=StepMapper(),
+        steps=get_step_mapper(),
     )
 
     executed, = reporter.reported
@@ -208,7 +209,7 @@ def test_scenario_with_description():
     assert scenario.success
 
 
-def test_name_no_description_and_scenario():
+def test_name_no_description_and_scenario(run, get_step_mapper, **_):
     text = textwrap.dedent('''
         Name: Test file.
 
@@ -219,7 +220,7 @@ def test_name_no_description_and_scenario():
     run(
         files=[InputFile(uri=uri, text=text)],
         reporter=reporter,
-        steps=StepMapper(),
+        steps=get_step_mapper(),
     )
 
     executed, = reporter.reported

@@ -69,7 +69,9 @@ See `docs/examples`_
 API
 ---
 
-%%>run, InputFile, StepMapper, find_input_files<%%
+For complete API documentation see `docs/api`_
+
+<%%run, InputFile, StepMapper, find_input_files%%>
 
 
 .. _`Behaviour Driven Development`:
@@ -78,3 +80,5 @@ API
 .. _`behave`: https://github.com/behave/behave
 
 .. _`docs/examples`: docs/examples
+
+.. _`docs/api`: docs/api.rst

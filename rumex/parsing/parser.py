@@ -1,35 +1,15 @@
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from enum import Enum, auto
-from types import MappingProxyType
 from typing import Protocol
-import textwrap
 
-from .table import parse_table_line
-from .tokenizer import Token, iter_tokens
+from .builder import FileBuilder
+from .core import InputFile, File
+from .tokenizer import TokenKind, iter_tokens
 
 
 class CannotParseLine(Exception):
     pass
-
-
-@dataclass(frozen=True, kw_only=True)
-class InputFile:
-    """Container for a test file to be parsed.
-
-    Does not have to represent an actual file.
-    Could be e.g. an entry in a database.
-
-    Params
-    ------
-
-    uri: A unique identifer. If it's a file,
-        this could be a path to this file.
-
-    text: The content of the file.
-    """
-
-    uri: str
-    text: str
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -44,7 +24,7 @@ class Scenario:
 
     name: str
     description: str
-    steps: tuple[Step, ...]
+    steps: Sequence[Step]
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -52,17 +32,19 @@ class ParsedFile:
 
     name: str
     description: str
-    scenarios: list[Scenario]
+    scenarios: Sequence[Scenario]
     uri: str
 
 
 class ParserProto(Protocol):
 
     def __call__(self, input_file: InputFile, /) -> ParsedFile:
-        pass
+        """Text in, object out."""
 
 
 class State(Enum):
+    """Possible states of the default state machine."""
+
     START = auto()
     FILE_NAME = auto()
     FILE_DESCRIPTION = auto()
@@ -71,114 +53,150 @@ class State(Enum):
     SCENARIO_DESCRIPTION = auto()
 
 
-_default_state_machine = {
+class StateMachine(Mapping):
+    """Represents possible states of a parser.
 
+    This object is a map where keys are `State` enumerals
+    and values are maps where keys are `TokenKind` enumerals
+    and values are 2-tuples of (`State` enumeral, builder callback).
+
+    The "builder callback" objects are functions that take
+    two positional arguments: `builder` and a value extracted
+    from a token of the associated `TokenKind`.
+
+    The parser uses the state machine map in the following way:
+
+    1) Using `current_state` as a key, extracts the eligible
+       state transitions from the state machine map.
+    2) Having token `t`, uses it to extract the 2-tuple
+       from the eligible state transitions.
+    3) Sets `current_state` to the first value of the tuple.
+    4) Executes the callback, passing it a `builder` object
+       and a value extracted from the token `t`.
+    """
+
+    def __init__(self, transitions):
+        self._transitions = transitions
+
+    def __getitem__(self, item):
+        return self._transitions[item]
+
+    def __iter__(self):
+        return iter(self._transitions)
+
+    def __len__(self):
+        return len(self._transitions)
+
+
+def new_scenario(builder, scenario_name):
+    builder.new_scenario(scenario_name)
+
+
+def no_op(*_):
+    pass
+
+
+def set_file_name(builder, file_name):
+    builder.name = file_name
+
+
+def append_file_description(builder, line):
+    builder.description.append(line)
+
+
+def new_step(builder, sentence):
+    builder.current_scenario_builder.new_step(sentence)
+
+
+def append_scenario_description(builder, line):
+    builder.current_scenario_builder.description.append(line)
+
+
+def add_step_data(builder, data):
+    builder.current_scenario_builder.current_step_builder.add_step_data(data)
+
+
+default_state_machine = StateMachine({
     State.START: {
-        Token.NameKW: (
-            State.FILE_NAME, lambda b, fn: b.set_file_name(fn)),
-        Token.BlankLine: (State.START, lambda b, fn: None),
-        Token.ScenarioKW: (
-            State.NEW_SCENARIO, lambda b, sn: b.new_scenario(sn)),
-        Token.Description: (
-            State.FILE_DESCRIPTION,
-            lambda b, desc: b.append_file_description(desc)
-        ),
+        TokenKind.NAME_KW: (State.FILE_NAME, set_file_name),
+        TokenKind.BLANK_LINE: (State.START, no_op),
+        TokenKind.SCENARIO_KW: (State.NEW_SCENARIO, new_scenario),
+        TokenKind.DESCRIPTION: (
+            State.FILE_DESCRIPTION, append_file_description),
+
         # Step keyword outside of scenario context
         # does not mean anything special.
-        Token.StepKW: (
-            State.FILE_DESCRIPTION,
-            lambda b, desc: b.append_file_description(desc)
-        ),
+        TokenKind.STEP_KW: (
+            State.FILE_DESCRIPTION, append_file_description),
     },
 
     State.FILE_NAME: {
-        Token.Description: (
-            State.FILE_DESCRIPTION,
-            lambda b, desc: b.append_file_description(desc)
-        ),
-        Token.BlankLine: (State.FILE_NAME, lambda b, fn: None),
+        TokenKind.DESCRIPTION: (
+            State.FILE_DESCRIPTION, append_file_description),
+        TokenKind.BLANK_LINE: (State.FILE_NAME, no_op),
 
         # Step keyword outside of scenario context
         # does not mean anything special.
-        Token.StepKW: (
-            State.FILE_DESCRIPTION,
-            lambda b, desc: b.append_file_description(desc)
-        ),
-        Token.ScenarioKW: (
-            State.NEW_SCENARIO, lambda b, sn: b.new_scenario(sn)),
+        TokenKind.STEP_KW: (
+            State.FILE_DESCRIPTION, append_file_description),
+        TokenKind.SCENARIO_KW: (State.NEW_SCENARIO, new_scenario),
     },
 
     State.FILE_DESCRIPTION: {
-        Token.BlankLine: (
-            State.FILE_DESCRIPTION,
-            lambda b, desc: b.append_file_description(desc)
-        ),
-        Token.Description: (
-            State.FILE_DESCRIPTION,
-            lambda b, desc: b.append_file_description(desc)
-        ),
-        Token.ScenarioKW: (
-            State.NEW_SCENARIO, lambda b, sn: b.new_scenario(sn)),
+        TokenKind.BLANK_LINE: (
+            State.FILE_DESCRIPTION, append_file_description),
+        TokenKind.DESCRIPTION: (
+            State.FILE_DESCRIPTION, append_file_description),
+        TokenKind.SCENARIO_KW: (State.NEW_SCENARIO, new_scenario),
 
         # Step keyword outside of scenario context
         # does not mean anything special.
-        Token.StepKW: (
-            State.FILE_DESCRIPTION,
-            lambda b, desc: b.append_file_description(desc)
-        ),
+        TokenKind.STEP_KW: (
+            State.FILE_DESCRIPTION, append_file_description),
     },
 
     State.NEW_SCENARIO: {
-        Token.BlankLine: (State.NEW_SCENARIO, lambda b, fn: None),
-        Token.StepKW: (State.STEP, lambda b, snt: b.new_step(snt)),
-        Token.Description: (
-            State.SCENARIO_DESCRIPTION,
-            lambda b, desc: b.append_scenario_description(desc)
-        ),
+        TokenKind.BLANK_LINE: (State.NEW_SCENARIO, no_op),
+        TokenKind.STEP_KW: (State.STEP, new_step),
+        TokenKind.DESCRIPTION: (
+            State.SCENARIO_DESCRIPTION, append_scenario_description),
     },
 
     State.SCENARIO_DESCRIPTION: {
-        Token.Description: (
-            State.SCENARIO_DESCRIPTION,
-            lambda b, desc: b.append_scenario_description(desc)
-        ),
-        Token.BlankLine: (
-            State.SCENARIO_DESCRIPTION,
-            lambda b, desc: b.append_scenario_description(desc)
-        ),
+        TokenKind.DESCRIPTION: (
+            State.SCENARIO_DESCRIPTION, append_scenario_description),
+        TokenKind.BLANK_LINE: (
+            State.SCENARIO_DESCRIPTION, append_scenario_description),
+        TokenKind.STEP_KW: (State.STEP, new_step),
     },
 
     State.STEP: {
-        Token.StepKW: (State.STEP, lambda b, sentence: b.new_step(sentence)),
-        Token.Description: (
-            State.STEP,
-            lambda b, data: b.add_step_data(data),
-        ),
-        Token.BlankLine: (State.STEP, lambda b, _: None),
+        TokenKind.STEP_KW: (State.STEP, new_step),
+        TokenKind.DESCRIPTION: (State.STEP, add_step_data),
+        TokenKind.BLANK_LINE: (State.STEP, no_op),
     },
 
-}
-
-
-default_state_machine = MappingProxyType({
-    k: MappingProxyType(v) for k, v in _default_state_machine.items()
 })
 
 
 def parse(
         input_file: InputFile,
         *,
-        state_machine=default_state_machine,
-        start_state=State.START,
-) -> ParsedFile:
-    builder = FileBuilder()
-    state = start_state
+        state_machine: StateMachine = default_state_machine,
+        make_builder=FileBuilder,
+        token_iterator=iter_tokens,
+) -> File:
+    """Text in, object out.
+
+    """
+    state = State.START
+    builder = make_builder()
 
     previous_token = None
-    tokens = iter_tokens(input_file.text)
+    tokens = token_iterator(input_file.text)
     for token in tokens:
         try:
-            state, transition = state_machine[state][type(token)]
+            state, transition = state_machine[state][token.kind]
         except KeyError as exc:
             raise KeyError(f'{state}, {token}') from exc
         try:
@@ -228,113 +246,3 @@ def _get_exception_msg(*, previous_token, token, tokens, file_uri):
             + '\n'.join(formatted_context)
             + '\n\n'
     )
-
-
-class TableBuilder:
-
-    def __init__(self):
-        self._header = None
-        self._data = []
-
-    def consume(self, line):
-        table_break_symbols = set('+- ')
-        if set(line) <= table_break_symbols:
-            return
-
-        row = parse_table_line(line, delimiter='|')
-        if self._header is None:
-            self._header = row
-        else:
-            self._data.append(row)
-
-    def get_built(self):
-        return tuple(dict(zip(self._header, row)) for row in self._data)
-
-
-class StepBuilder:
-
-    def __init__(self, sentence):
-        self._sentence = sentence
-        self._table_builder = TableBuilder()
-
-    def add_step_data(self, data):
-        self._table_builder.consume(data)
-
-    def get_built(self):
-        return Step(
-                sentence=self._sentence,
-                data=self._table_builder.get_built(),
-        )
-
-
-class ScenarioBuilder:
-
-    def __init__(self, name):
-        self._name = name
-        self._step_builders = []
-        self._description = []
-
-    def __getattr__(self, name):
-        try:
-            attr = getattr(self._step_builders[-1], name)
-        except AttributeError as exc:
-            raise AttributeError(name) from exc
-        return attr
-
-    def new_step(self, sentence):
-        self._step_builders.append(StepBuilder(sentence))
-
-    def append_scenario_description(self, line):
-        self._description.append(line)
-
-    def get_built(self):
-        if self._description:
-            formatted_description = textwrap.dedent(
-                    '\n'.join(self._description)).strip()
-        else:
-            formatted_description = None
-
-        return Scenario(
-                name=self._name,
-                description=formatted_description,
-                steps=[builder.get_built() for builder in self._step_builders],
-        )
-
-
-class FileBuilder:
-
-    def __init__(self):
-        self._name = None
-        self._description = []
-        self._scenario_builders = []
-
-    def set_file_name(self, name):
-        self._name = name
-
-    def append_file_description(self, line):
-        self._description.append(line)
-
-    def new_scenario(self, scenario_name):
-        self._scenario_builders.append(ScenarioBuilder(scenario_name))
-
-    def __getattr__(self, name):
-        try:
-            attr = getattr(self._scenario_builders[-1], name)
-        except AttributeError as exc:
-            raise AttributeError(name) from exc
-        return attr
-
-    def get_built(self, *, uri):
-        if self._description:
-            formatted_description = textwrap.dedent(
-                    '\n'.join(self._description)).strip()
-        else:
-            formatted_description = None
-
-        return ParsedFile(
-            name=self._name,
-            description=formatted_description,
-            scenarios=[
-                builder.get_built() for builder in self._scenario_builders],
-            uri=uri,
-        )

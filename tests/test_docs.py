@@ -56,7 +56,8 @@ def test_examples_execute_fine():
 
 def test_readmes_have_been_reviewed():
     reviewed = {
-        'README.rst': 'eadb68ab964bfe3934b4932df9a849a77413c97c',
+        'README.rst': 'a247bef0424e1e1c0b0c522f485b513d6aea2cdc',
+        'api.rst': 'b3ef1138697303b0e70505e09952693db215748d',
     }
     main_readme = find_project_root().joinpath('README.rst')
 
@@ -67,5 +68,5 @@ def test_readmes_have_been_reviewed():
         with doc.open('rb') as fio:
             text = fio.read()
         assert reviewed[doc.name] == hashlib.sha1(
-                text, usedforsecurity=False).hexdigest()
-        assert get_built_text(doc.name) == text.decode('utf8')
+                text, usedforsecurity=False).hexdigest(), doc.name
+        assert get_built_text(doc) == text.decode('utf8'), doc.name

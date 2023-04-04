@@ -3,7 +3,7 @@
 set -euo pipefail
 
 echo -e "\nPytest:"
-poetry run pytest ; echo Success!
+poetry run pytest tests ; echo Success!
 echo -e "\nBandit:"
 poetry run bandit -c pyproject.toml -r . ; echo Success!
 echo -e "\nMypy:"
