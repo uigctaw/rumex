@@ -73,7 +73,7 @@ def _get_mapping_signature(mapping, *, name):
 def _iter_mapping_signature(mapping, *, name):
     yield name
     yield '~' * len(name) + '\n'
-    docs = mapping.__doc__
+    docs = mapping.__doc__.strip()
     if not docs:
         raise ValueError(f'{mapping} is missing class docstring.')
     yield docs + '\n'
@@ -110,7 +110,7 @@ def _get_sequence_signature(mapping, *, name):
 def _iter_sequence_signature(sequence, *, name):
     yield name
     yield '~' * len(name) + '\n'
-    docs = sequence.__doc__
+    docs = sequence.__doc__.strip()
     if not docs:
         raise ValueError(f'{sequence} is missing class docstring.')
     yield docs + '\n'
@@ -139,7 +139,7 @@ def _iter_enum_signature(enum_, *, name):
 
     yield name
     yield '~' * len(name) + '\n'
-    docs = enum_.__doc__
+    docs = enum_.__doc__.strip()
     if not docs:
         raise ValueError(f'{enum_} is missing class docstring.')
     yield docs + '\n'
@@ -158,7 +158,7 @@ def _get_protocol_signature(proto, *, name):
 
 
 def _iter_protocol_signature(*, cls, attrs, name):
-    bases = '\n'.join(base.__qualname__ for base in cls.__bases__)
+    bases = ', '.join(base.__qualname__ for base in cls.__bases__)
     full_name = f'{name}({bases})'
     yield full_name
     yield '~' * len(full_name) + '\n'
@@ -186,17 +186,17 @@ def _iter_class_signature(*, cls, name):
     if cls.__bases__ == (object,):
         full_name = name
     else:
-        bases = '\n'.join(base.__qualname__ for base in cls.__bases__)
+        bases = ', '.join(base.__qualname__ for base in cls.__bases__)
         full_name = f'{name}({bases})'
     yield full_name
     yield '~' * len(full_name) + '\n'
-    docs = cls.__doc__
+    docs = cls.__doc__.strip()
     if not docs:
         raise ValueError(f'{cls} is missing class docstring.')
-    yield cls.__doc__ + '\n'
+    yield docs + '\n'
     yield 'Methods'
     yield '.......\n'
-    yield '..\n'
+    yield ':\n'
     for attr_name, attr in vars(cls).items():
         if (
             attr_name in ('__module__', '__doc__', '__dict__', '__weakref__')
@@ -267,7 +267,7 @@ def _iter_general_description(description):
         if line.strip() == '```':
             in_code = not in_code
             if in_code:
-                yield '\n.. code:: python\n'
+                yield '.. code:: python\n'
             else:
                 should_add_indent = any(
                         not line.startswith('    ') for line in code_section)
@@ -301,7 +301,7 @@ def _params_description(obj, *, signature):
 
 def _iter_params_description(docs):
     if docs.parameters:
-        yield '\n.. rubric:: Parameters\n'
+        yield '.. rubric:: Parameters\n'
     for param in docs.parameters:
         if param.name.endswith('_'):
             name = param.name[:-1] + '\\' + '_'
