@@ -61,7 +61,6 @@ Build callables representing steps of a scenario.
 
 Each callable takes one argument `context`.
 
-
 .. rubric:: Parameters
 
 - scenario: The scenario to which the step callables pertain.
@@ -87,7 +86,6 @@ Container for a test file to be parsed.
 
 Does not have to represent an actual file.
 Could be e.g. an entry in a database.
-
 
 .. rubric:: Parameters
 
@@ -125,7 +123,7 @@ Prepare step functions.
 Methods
 .......
 
-..
+:
 
 ----
 
@@ -138,7 +136,6 @@ Methods
     )
 
 Register a function to execute at the start of each scenario.
-
 
 .. rubric:: Parameters
 
@@ -155,7 +152,6 @@ Register a function to execute at the start of each scenario.
     )
 
 Register a function to execute before each step.
-
 
 .. rubric:: Parameters
 
@@ -174,7 +170,6 @@ Create decorator for registering steps.
 
 For example, to register a function:
 
-
 .. code:: python
 
     def say_hello(person, *, context): ...
@@ -183,7 +178,6 @@ For example, to register a function:
 to match sentence "Then Bob says hello",
 you can do:
 
-
 .. code:: python
 
         steps = StepMapper()
@@ -191,7 +185,6 @@ you can do:
         @steps(r'(\w+) says hello')
         def say_hello(person, *, context):
             context.get_person(person).say('hello')
-
 
 
 .. rubric:: Parameters
@@ -228,7 +221,6 @@ rumex.find_input_files
     )
 
 Find regular files and return them as `InputFile[s]`.
-
 
 .. rubric:: Parameters
 
@@ -269,7 +261,6 @@ rumex.run
     )
 
 Rumex entry point for running tests.
-
 
 .. rubric:: Parameters
 
@@ -325,7 +316,6 @@ Represents possible states of a parser.
     4) Executes the callback, passing it a `builder` object
        and a value extracted from the token `t`.
 
-
 Items
 .....
 
@@ -348,7 +338,7 @@ Items
 
   .. code:: python
 
-    def no_op(*args):
+    def no_op(*_):
         pass
 
  - TokenKind.SCENARIO_KW
@@ -401,7 +391,7 @@ Items
 
   .. code:: python
 
-    def no_op(*args):
+    def no_op(*_):
         pass
 
  - TokenKind.STEP_KW
@@ -477,7 +467,7 @@ Items
 
   .. code:: python
 
-    def no_op(*args):
+    def no_op(*_):
         pass
 
  - TokenKind.STEP_KW
@@ -563,7 +553,7 @@ Items
 
   .. code:: python
 
-    def no_op(*args):
+    def no_op(*_):
         pass
 
 
