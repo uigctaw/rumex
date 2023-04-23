@@ -298,23 +298,23 @@ rumex.parsing.parser.default_state_machine
 
 Represents possible states of a parser.
 
-    This object is a map where keys are `State` enumerals
-    and values are maps where keys are `TokenKind` enumerals
-    and values are 2-tuples of (`State` enumeral, builder callback).
+This object is a map where keys are `State` enumerals
+and values are maps where keys are `TokenKind` enumerals
+and values are 2-tuples of (`State` enumeral, builder callback).
 
-    The "builder callback" objects are functions that take
-    two positional arguments: `builder` and a value extracted
-    from a token of the associated `TokenKind`.
+The "builder callback" objects are functions that take
+two positional arguments: `builder` and a value extracted
+from a token of the associated `TokenKind`.
 
-    The parser uses the state machine map in the following way:
+The parser uses the state machine map in the following way:
 
-    1) Using `current_state` as a key, extracts the eligible
-       state transitions from the state machine map.
-    2) Having token `t`, uses it to extract the 2-tuple
-       from the eligible state transitions.
-    3) Sets `current_state` to the first value of the tuple.
-    4) Executes the callback, passing it a `builder` object
-       and a value extracted from the token `t`.
+1) Using `current_state` as a key, extracts the eligible
+   state transitions from the state machine map.
+2) Having token `t`, uses it to extract the 2-tuple
+   from the eligible state transitions.
+3) Sets `current_state` to the first value of the tuple.
+4) Executes the callback, passing it a `builder` object
+   and a value extracted from the token `t`.
 
 Items
 .....
@@ -546,9 +546,87 @@ Items
     def add_step_data(builder, data):
         builder.current_scenario_builder.current_step_builder.add_step_data(data)
 
+ - TokenKind.TRIPLE_QUOTE
+
+  0. State.BLOCK_OF_TEXT
+  1. :
+
+  .. code:: python
+
+    def no_op(*_):
+        pass
+
  - TokenKind.BLANK_LINE
 
   0. State.STEP
+  1. :
+
+  .. code:: python
+
+    def no_op(*_):
+        pass
+
+
+- State.BLOCK_OF_TEXT
+
+ - TokenKind.NAME_KW
+
+  0. State.BLOCK_OF_TEXT
+  1. :
+
+  .. code:: python
+
+    def add_text_block_line(builder, line):
+        builder.current_scenario_builder.current_step_builder.add_text_block_line(
+                line)
+
+ - TokenKind.SCENARIO_KW
+
+  0. State.BLOCK_OF_TEXT
+  1. :
+
+  .. code:: python
+
+    def add_text_block_line(builder, line):
+        builder.current_scenario_builder.current_step_builder.add_text_block_line(
+                line)
+
+ - TokenKind.STEP_KW
+
+  0. State.BLOCK_OF_TEXT
+  1. :
+
+  .. code:: python
+
+    def add_text_block_line(builder, line):
+        builder.current_scenario_builder.current_step_builder.add_text_block_line(
+                line)
+
+ - TokenKind.BLANK_LINE
+
+  0. State.BLOCK_OF_TEXT
+  1. :
+
+  .. code:: python
+
+    def add_text_block_line(builder, line):
+        builder.current_scenario_builder.current_step_builder.add_text_block_line(
+                line)
+
+ - TokenKind.DESCRIPTION
+
+  0. State.BLOCK_OF_TEXT
+  1. :
+
+  .. code:: python
+
+    def add_text_block_line(builder, line):
+        builder.current_scenario_builder.current_step_builder.add_text_block_line(
+                line)
+
+ - TokenKind.TRIPLE_QUOTE
+
+  0. State.NEW_SCENARIO
   1. :
 
   .. code:: python
@@ -587,12 +665,20 @@ Elements
 
   .. code:: python
 
+    def match_triple_quote(line):
+        if line.strip() == '"""':
+            return TokenKind.TRIPLE_QUOTE, None
+
+  3:
+
+  .. code:: python
+
     def match_step(line):
         stripped = line.strip()
         if stripped.startswith(('Given ', 'When ', 'Then ', 'And ')):
             return TokenKind.STEP_KW, line
 
-  3:
+  4:
 
   .. code:: python
 
@@ -600,7 +686,7 @@ Elements
         if not line.strip():
             return TokenKind.BLANK_LINE, line
 
-  4:
+  5:
 
   .. code:: python
 
@@ -626,6 +712,7 @@ Elements
  - FILE_DESCRIPTION
  - NEW_SCENARIO
  - STEP
+ - BLOCK_OF_TEXT
  - SCENARIO_DESCRIPTION
 
 rumex.parsing.tokenizer.TokenKind
@@ -642,3 +729,4 @@ Elements
  - STEP_KW
  - BLANK_LINE
  - DESCRIPTION
+ - TRIPLE_QUOTE

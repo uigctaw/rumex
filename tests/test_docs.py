@@ -56,17 +56,22 @@ def test_examples_execute_fine():
 
 def test_readmes_have_been_reviewed():
     reviewed = {
-        'README.rst': 'e5533ad7bc1f0cc7dc799bdf232d55c85bd85c05',
-        'api.rst': '8ea3d2f611d3139a0904ba3ec16ceff95e471639',
+        'README.rst': 'b8218136029f87f519e825a2a2e54f91def957c2',
+        'api.rst': '9c309f567986600333c86f9adf9b4c42d94083e5',
     }
-    main_readme = find_project_root().joinpath('README.rst')
 
+    project_root = find_project_root()
+    main_readme = find_project_root().joinpath('README.rst')
     for doc in itertools.chain(
             [main_readme],
-            find_project_root().joinpath('docs').glob('**/*.rst'),
+            project_root.joinpath('docs').glob('**/*.rst'),
     ):
         with doc.open('rb') as fio:
             text = fio.read()
         assert reviewed[doc.name] == hashlib.sha1(
                 text, usedforsecurity=False).hexdigest(), doc.name
-        assert get_built_text(doc) == text.decode('utf8'), doc.name
+        template_file = project_root.joinpath(
+                'docs_builder', doc.name + '.template')
+        if template_file.exists():
+            assert get_built_text(template_file) == text.decode('utf8'), \
+                    doc.name

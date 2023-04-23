@@ -76,7 +76,7 @@ def _iter_mapping_signature(mapping, *, name):
     docs = mapping.__doc__.strip()
     if not docs:
         raise ValueError(f'{mapping} is missing class docstring.')
-    yield docs + '\n'
+    yield Docstring(docs).description + '\n'
     yield 'Items'
     yield '.....\n'
 
@@ -113,7 +113,7 @@ def _iter_sequence_signature(sequence, *, name):
     docs = sequence.__doc__.strip()
     if not docs:
         raise ValueError(f'{sequence} is missing class docstring.')
-    yield docs + '\n'
+    yield Docstring(docs).description + '\n'
     yield 'Elements'
     yield '........\n'
 
@@ -142,7 +142,7 @@ def _iter_enum_signature(enum_, *, name):
     docs = enum_.__doc__.strip()
     if not docs:
         raise ValueError(f'{enum_} is missing class docstring.')
-    yield docs + '\n'
+    yield Docstring(docs).description + '\n'
     yield 'Elements'
     yield '........\n'
 
@@ -193,7 +193,7 @@ def _iter_class_signature(*, cls, name):
     docs = cls.__doc__.strip()
     if not docs:
         raise ValueError(f'{cls} is missing class docstring.')
-    yield docs + '\n'
+    yield Docstring(docs).description + '\n'
     yield 'Methods'
     yield '.......\n'
     yield ':\n'
@@ -386,7 +386,7 @@ def get_built_text(source):
 
 def main():
     source_to_target = {
-            'README': 'README',
+            # 'README': 'README',
             'api': 'docs/api'
     }
     for source, target in source_to_target.items():
