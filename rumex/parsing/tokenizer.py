@@ -16,6 +16,7 @@ class TokenKind(Enum):
     STEP_KW = auto()
     BLANK_LINE = auto()
     DESCRIPTION = auto()
+    TRIPLE_QUOTE = auto()
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -44,6 +45,11 @@ def match_scenario(line):
 def match_name(line):
     if name := match_keyword('Name', line=line):
         return TokenKind.NAME_KW, name
+
+
+def match_triple_quote(line):
+    if line.strip() == '"""':
+        return TokenKind.TRIPLE_QUOTE, None
 
 
 def match_step(line):
@@ -82,6 +88,7 @@ class Tokenizers(Sequence):
 default_tokenizers = Tokenizers(
     match_name,
     match_scenario,
+    match_triple_quote,
     match_step,
     match_blank_line,
     match_description,

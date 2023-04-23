@@ -56,11 +56,8 @@ def run_test(
                 reporter=reporter,
                 map_=map_,
         )
-    try:
-        test(
-                parse=parse,
-                get_step_mapper=get_step_mapper,
-                run=wrapped_run,
-        )
-    except Exception as exc:
-        raise type(exc)(test.__module__ + '.' + test.__name__) from exc
+    test(
+            parse=parse,
+            get_step_mapper=get_step_mapper,
+            run=wrapped_run,
+    )

@@ -50,6 +50,7 @@ class State(Enum):
     FILE_DESCRIPTION = auto()
     NEW_SCENARIO = auto()
     STEP = auto()
+    BLOCK_OF_TEXT = auto()
     SCENARIO_DESCRIPTION = auto()
 
 
@@ -116,6 +117,11 @@ def add_step_data(builder, data):
     builder.current_scenario_builder.current_step_builder.add_step_data(data)
 
 
+def add_text_block_line(builder, line):
+    builder.current_scenario_builder.current_step_builder.add_text_block_line(
+            line)
+
+
 default_state_machine = StateMachine({
     State.START: {
         TokenKind.NAME_KW: (State.FILE_NAME, set_file_name),
@@ -173,9 +179,14 @@ default_state_machine = StateMachine({
     State.STEP: {
         TokenKind.STEP_KW: (State.STEP, new_step),
         TokenKind.DESCRIPTION: (State.STEP, add_step_data),
+        TokenKind.TRIPLE_QUOTE: (State.BLOCK_OF_TEXT, no_op),
         TokenKind.BLANK_LINE: (State.STEP, no_op),
     },
 
+    State.BLOCK_OF_TEXT: {
+            kind: (State.BLOCK_OF_TEXT, add_text_block_line)
+            for kind in TokenKind if kind != TokenKind.TRIPLE_QUOTE
+    } | {TokenKind.TRIPLE_QUOTE: (State.NEW_SCENARIO, no_op)},
 })
 
 

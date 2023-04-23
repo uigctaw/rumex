@@ -25,19 +25,44 @@ class TableBuilder:
         return tuple(dict(zip(self._header, row)) for row in self._data)
 
 
+class TextBlockBuilder:
+
+    def __init__(self):
+        self._lines = []
+
+    def consume(self, line):
+        self._lines.append(line)
+
+    def get_built(self):
+        return textwrap.dedent('\n'.join(self._lines)).strip()
+
+
 class StepBuilder:
 
     def __init__(self, sentence):
         self.sentence = sentence
-        self._table_builder = TableBuilder()
+        self._builder = None
+        self._table = False
+        self._text_block = False
 
     def add_step_data(self, data):
-        self._table_builder.consume(data)
+        self._table = True
+        if self._text_block:
+            raise AssertionError('Unexpected usage.')
+        self._builder = self._builder or TableBuilder()
+        self._builder.consume(data)
+
+    def add_text_block_line(self, line):
+        self._text_block = True
+        if self._table:
+            raise AssertionError('Unexpected usage.')
+        self._builder = self._builder or TextBlockBuilder()
+        self._builder.consume(line)
 
     def get_built(self):
         return Step(
                 sentence=self.sentence,
-                data=self._table_builder.get_built(),
+                data=self._builder.get_built() if self._builder else None,
         )
 
 
