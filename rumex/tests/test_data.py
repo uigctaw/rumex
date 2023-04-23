@@ -64,8 +64,8 @@ def test_simple_table(get_step_mapper, run, **_):
     steps = get_step_mapper()
 
     @steps(r'Given the following stuff:')
-    def given_(*, step_data):
-        assert step_data == (
+    def given_(*, data):
+        assert data == (
                 {'Col 1': 'ab cd', 'Col 2': 'AB CD'},
                 {'Col 1': 'efgh', 'Col 2': 'UVW'},
         )
@@ -94,8 +94,8 @@ def test_table_with_escaping(get_step_mapper, run, **_):
     steps = get_step_mapper()
 
     @steps(r'Given the following stuff:')
-    def given_(*, step_data):
-        assert step_data == (
+    def given_(*, data):
+        assert data == (
                 {'Col |1': 'ab|cd', 'Col| 2': 'AB CD\\'},
                 {'Col |1': 'efgh', 'Col| 2': '| UVW |'},
         )
@@ -128,16 +128,43 @@ def test_two_tables(get_step_mapper, run, **_):
     steps = get_step_mapper()
 
     @steps(r'Given the following stuff:')
-    def given_(*, step_data):
-        assert step_data == (
+    def given_(*, data):
+        assert data == (
                 {'Col 1': 'foo', 'Col 2': 'bar'},
         )
 
     @steps(r'Given this stuff:')
-    def given_2(*, step_data):
-        assert step_data == (
+    def given_2(*, data):
+        assert data == (
                 {'Col a': 'baz', 'Col b': 'qux'},
         )
+
+    run(
+        files=[InputFile(uri='we', text=text)],
+        reporter=reporter,
+        steps=steps,
+    )
+
+    executed_file, = reporter.reported
+    assert executed_file.success
+
+
+def test_steps_with_a_block_of_text(get_step_mapper, run, **_):
+    text = textwrap.dedent('''
+        Scenario: Steps with text
+
+        Given the following stuff:
+            """
+            Hello!
+                Hi!
+            """
+    ''')
+    reporter = Reporter()
+    steps = get_step_mapper()
+
+    @steps(r'Given the following stuff:')
+    def given_(*, data):
+        assert data == 'Hello!\n    Hi!'
 
     run(
         files=[InputFile(uri='we', text=text)],

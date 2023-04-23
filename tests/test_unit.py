@@ -1,14 +1,10 @@
-import traceback
-
-from rumex.tests import run_tests
+from rumex.tests import iter_tests, run_test
 
 
-def test_all():
-    passed, failed = run_tests()
-    assert passed or failed  # sanity check
+def _get_test(_test):
+    return lambda: run_test(_test)
 
-    if failed:
-        formatted = '\n\n'.join(
-            '\n'.join(traceback.format_exception(exc)) for exc in failed
-        )
-        raise AssertionError(f'{len(failed)} test(s) failed:\n{formatted}')
+
+for test in iter_tests():
+    locals()[test.__qualname__] = _get_test(test)
+del test  # pylint: disable=undefined-loop-variable

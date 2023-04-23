@@ -9,8 +9,6 @@ import re
 from .parsing.core import InputFile, File, ParserProto, Scenario
 from .parsing.parser import parse
 
-_STEP_DATA_KWARG = 'step_data'
-
 
 class HookAlreadyRegistered(Exception):
     pass
@@ -335,12 +333,12 @@ class StepMapper:
     def _add_step_fn(self, fn, /, *, pattern):
         self._pattern_to_fn[re.compile(pattern)] = fn
 
-    def _wrap_mapped_function(self, *, fn_spec, fn, mapped_args, step_data):
+    def _wrap_mapped_function(self, *, fn_spec, fn, mapped_args, data):
 
         def wrapped(context):
             kwargs = {}
-            if _STEP_DATA_KWARG in fn_spec.kwonlyargs:
-                kwargs[_STEP_DATA_KWARG] = step_data
+            if 'data' in fn_spec.kwonlyargs:
+                kwargs['data'] = data
             if 'context' in fn_spec.kwonlyargs:
                 kwargs['context'] = context
             return fn(*mapped_args, **kwargs)
@@ -361,7 +359,7 @@ class StepMapper:
                     fn_spec=spec,
                     fn=fn,
                     mapped_args=mapped_args,
-                    step_data=step_.data,
+                    data=step_.data,
                     )
         raise Exception('TODO')
 
