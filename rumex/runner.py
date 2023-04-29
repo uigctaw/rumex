@@ -1,16 +1,22 @@
-from __future__ import annotations
-
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from typing import Any, Callable, Protocol, TypeAlias
 import inspect
 import re
 
-from .parsing.core import InputFile, File, ParserProto, Scenario
+from .parsing.core import InputFile, ParsedFile, ParserProto, Scenario
 from .parsing.parser import parse
 
 
-class HookAlreadyRegistered(Exception):
+class RumexException(Exception):
+    pass
+
+
+class HookAlreadyRegistered(RumexException):
+    pass
+
+
+class MatchingFunctionNotFound(RumexException):
     pass
 
 
@@ -42,15 +48,15 @@ class ExecutedScenario:
     name: str
     description: str
     steps: Sequence[ExecutedStep]
-
-    def __new__(cls, *, steps, **_):
-        if all(s.success for s in steps):
-            return super().__new__(PassedScenario)
-        return super().__new__(FailedScenario)
+    tags: Sequence[str]
 
 
 class PassedScenario(ExecutedScenario):
     success = True
+
+
+class SkippedScenario(PassedScenario):
+    pass
 
 
 class FailedScenario(ExecutedScenario):
@@ -106,11 +112,49 @@ class _Hooks:
             raise HookAlreadyRegistered(hook_name)
 
 
+class ContextCallable(Protocol):
+
+    def __call__(self, context: Any) -> None:
+        ...
+
+
+class ExecutableStep:
+
+    def __init__(self, *, sentence: str, callable_: ContextCallable):
+        self.sentence = sentence
+        self._callable = callable_
+
+    def __call__(self, *, context: Any) -> None:
+        self._callable(context=context)
+
+
+@dataclass(frozen=True, kw_only=True)
+class MissingStep:
+
+    sentence: str
+
+
+class StepMapperProto(Protocol):
+
+    def iter_steps(
+            self,
+            scenario: Scenario,
+    ) -> Iterable[ExecutableStep | MissingStep]:
+        """Build callables representing steps of a scenario.
+
+        Each callable takes one argument `context`.
+
+        Params
+        ------
+        scenario: The scenario to which the step callables pertain.
+        """
+
+
 class ExecutorProto(Protocol):
 
     def __call__(
             self,
-            parsed: File,
+            parsed: ParsedFile,
             /,
             *,
             steps: StepMapperProto,
@@ -122,51 +166,82 @@ class ExecutorProto(Protocol):
 def execute_scenario(
         scenario,
         *,
-        context,
+        context_maker,
         steps,
+        skip_scenario_tag,
 ):
     executed_steps = []
-    failed = False
-    for executable_step in steps.iter_steps(scenario):
-        if failed:
-            executed = IgnoredStep(sentence=executable_step.sentence)
-        else:
-            try:
-                executable_step(context=context)
-            except Exception as exc:  # pylint: disable=broad-except
+    if skip_scenario_tag in scenario.tags:
+        cls = SkippedScenario
+    else:
+        failed = False
+        context = context_maker()
+        for step_ in steps.iter_steps(scenario):
+            if isinstance(step_, MissingStep):
                 failed = True
                 executed = FailedStep(
-                        exception=exc,
-                        sentence=executable_step.sentence,
+                    exception=MatchingFunctionNotFound(step_.sentence),
+                    sentence=step_.sentence,
                 )
+            elif failed:
+                executed = IgnoredStep(sentence=step_.sentence)
             else:
-                executed = PassedStep(sentence=executable_step.sentence)
-        executed_steps.append(executed)
+                try:
+                    step_(context=context)
+                except Exception as exc:  # pylint: disable=broad-except
+                    failed = True
+                    executed = FailedStep(
+                            exception=exc,
+                            sentence=step_.sentence,
+                    )
+                else:
+                    executed = PassedStep(sentence=step_.sentence)
+            executed_steps.append(executed)
+        cls = FailedScenario if failed else PassedScenario
 
-    return ExecutedScenario(
+    return cls(
             name=scenario.name,
             description=scenario.description,
             steps=tuple(executed_steps),
+            tags=scenario.tags,
     )
 
 
 def execute_file(
-        parsed_file: File,
+        parsed_file: ParsedFile,
         /,
         *,
         context_maker: Callable[[], Any] | None,
         steps: StepMapperProto,
+        skip_scenario_tag: str | None = None,
 ):
-    """Executed a single test file."""
+    """Executed a single test file.
+
+    Params
+    ------
+    parsed_file: File to be executed.
+
+    context_maker:
+        Callable returning context object
+        that will be passed to steps.
+
+    steps:
+        Step mapper that can generate executable steps
+        for all the steps defined in the `parsed_file`.
+
+    skip_scenario_tag:
+        If a scenario in the `parsed_file` contains
+        this tag, the scenario will not be executed.
+    """
 
     context_maker = context_maker or (lambda: None)
     executed_scenarios: list[ExecutedScenario] = []
     for scenario in parsed_file.scenarios:
-        context = context_maker()
         executed_scenario = execute_scenario(
                 scenario,
                 steps=steps,
-                context=context,
+                context_maker=context_maker,
+                skip_scenario_tag=skip_scenario_tag,
         )
         executed_scenarios.append(executed_scenario)
 
@@ -207,10 +282,10 @@ def run(
         to step functions.
 
     parser:
-        A callable that takes `InputFile` and returns `File`.
+        A callable that takes `InputFile` and returns `ParsedFile`.
 
     executor:
-        A callable that takes `File`
+        A callable that takes `ParsedFile`
         `steps` and `context_maker` and returns `ExecutedFile`.
 
     reporter:
@@ -233,35 +308,6 @@ def run(
             parsed_files,
     )
     return reporter(executed)
-
-
-class ContextCallable(Protocol):
-
-    def __call__(self, context: Any) -> None:
-        ...
-
-
-class ExecutableStep:
-
-    def __init__(self, *, sentence: str, callable_: ContextCallable):
-        self.sentence = sentence
-        self._callable = callable_
-
-    def __call__(self, *, context: Any) -> None:
-        self._callable(context=context)
-
-
-class StepMapperProto(Protocol):
-
-    def iter_steps(self, scenario: Scenario) -> Iterable[ExecutableStep]:
-        """Build callables representing steps of a scenario.
-
-        Each callable takes one argument `context`.
-
-        Params
-        ------
-        scenario: The scenario to which the step callables pertain.
-        """
 
 
 class StepMapper:
@@ -361,14 +407,20 @@ class StepMapper:
                     mapped_args=mapped_args,
                     data=step_.data,
                     )
-        raise Exception('TODO')
 
-    def iter_steps(self, scenario: Scenario) -> Iterable[ExecutableStep]:
+        return None
+
+    def iter_steps(
+            self,
+            scenario: Scenario,
+    ) -> Iterable[ExecutableStep | MissingStep]:
         """See documentation of `StepMapperProto`."""
         if (hook := self._hooks.run_before_scenario):
             yield ExecutableStep(sentence=hook.name, callable_=hook.fn)
         for step_ in scenario.steps:
             if (hook := self._hooks.run_before_step):
                 yield ExecutableStep(sentence=hook.name, callable_=hook.fn)
-            fn = self._prepare_step(step_)
-            yield ExecutableStep(sentence=step_.sentence, callable_=fn)
+            if (fn := self._prepare_step(step_)):
+                yield ExecutableStep(sentence=step_.sentence, callable_=fn)
+            else:
+                yield MissingStep(sentence=step_.sentence)

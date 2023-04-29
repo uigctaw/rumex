@@ -10,6 +10,7 @@ class CannotTokenizeLine(Exception):
 
 
 class TokenKind(Enum):
+    """Basic identifiers for syntactic meaning of a (part of) line."""
 
     NAME_KW = auto()
     SCENARIO_KW = auto()
@@ -17,6 +18,7 @@ class TokenKind(Enum):
     BLANK_LINE = auto()
     DESCRIPTION = auto()
     TRIPLE_QUOTE = auto()
+    SCENARIO_TAG = auto()
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -35,6 +37,12 @@ def match_keyword(keyword, *, line):
     if match_ := re.match(fr'^\s*{keyword}:\s*(.*)$', line):
         value, = match_.groups()
         return value
+
+
+def match_scenario_tag(line):
+    if match_ := re.match(r'^\s*@(\w+)\s*$', line):
+        tag, = match_.groups()
+        return TokenKind.SCENARIO_TAG, tag
 
 
 def match_scenario(line):
@@ -86,9 +94,10 @@ class Tokenizers(Sequence):
 
 
 default_tokenizers = Tokenizers(
-    match_name,
-    match_scenario,
     match_triple_quote,
+    match_name,
+    match_scenario_tag,
+    match_scenario,
     match_step,
     match_blank_line,
     match_description,

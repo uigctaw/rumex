@@ -6,6 +6,7 @@ import inspect
 import pathlib
 import re
 import textwrap
+import types
 import typing
 import sys
 
@@ -44,13 +45,17 @@ def _iter_api_for_items(items):
         yield api
 
 
+def _is_dataclass(obj):
+    return hasattr(obj, '__dataclass_fields__')
+
+
 def _get_api(name):
     module_name, obj_name = name.rsplit('.', maxsplit=1)
     module = importlib.import_module(module_name)
     obj = getattr(module, obj_name)
     if getattr(obj, '_is_protocol', False):
         signature = _get_protocol_signature(obj, name=name)
-    elif hasattr(obj, '__dataclass_fields__'):
+    elif _is_dataclass(obj):
         signature = _get_dataclass_signature(obj, name=name)
     elif isinstance(obj, Mapping):
         signature = _get_mapping_signature(obj, name=name)
@@ -242,8 +247,18 @@ def _get_fn_or_dc_signature(obj, *, name):
             accumulator['asterisk'] = ['*']
 
     args = '    ' + ',\n    '.join(sum(filter(None, accumulator.values()), []))
+    if (
+            sig.return_annotation is inspect.Parameter.empty
+            or _is_dataclass(obj)
+    ):
+        returns = ''
+    else:
+        try:
+            returns = f' -> {_stringify_object(sig.return_annotation)}'
+        except AttributeError:
+            breakpoint()
     return (
-            _as_code(f'{name}(\n{args}\n)')
+            _as_code(f'{name}(\n{args}\n){returns}')
             + '\n\n'
             + _general_description(obj)
             + '\n\n'
@@ -314,6 +329,8 @@ def _iter_params_description(docs):
 def _format_annotation(annotation):
     if isinstance(annotation, str):
         return annotation
+    elif isinstance(annotation, types.UnionType):
+        return ' | '.join(map(_format_annotation, annotation.__args__))
     return annotation.__qualname__
 
 
@@ -336,17 +353,22 @@ def _format_param(param, *, obj):
     )
 
 
+def _stringify_object(obj):
+    if hasattr(obj, '__name__'):
+        suffix = obj.__name__
+    elif hasattr(obj, '__class__'):
+        suffix = obj.__class__.__qualname__
+    else:
+        ret = repr(obj)
+    ret = obj.__module__ + '.' + suffix
+    return ret
+
+
 def _default_to_str(default, *, name, owner):
     if default is None:
         return repr(None)
     if hasattr(default, '__module__'):
-        if hasattr(default, '__name__'):
-            suffix = default.__name__
-        elif hasattr(default, '__class__'):
-            suffix = default.__class__.__qualname__
-        else:
-            ret = repr(default)
-        ret = default.__module__ + '.' + suffix
+        ret = _stringify_object(default)
     else:
         fn, = ast.parse(inspect.getsource(owner)).body
         default_value_name = next(

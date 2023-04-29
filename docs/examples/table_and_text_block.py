@@ -14,7 +14,7 @@ example_file = rumex.InputFile(
                 |    10 |   1.5 |
                 |     4 |     4 |
 
-            And and modifiers:
+            And modifiers:
                 """
                     {
                         "discount_pc": 20,

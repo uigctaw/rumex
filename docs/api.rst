@@ -17,7 +17,7 @@ Protocol methods
         self,
         input_file: InputFile,
         /
-    )
+    ) -> rumex.parsing.core.ParsedFile
 
 Text in, object out.
 
@@ -33,12 +33,12 @@ Protocol methods
 
     __call__(
         self,
-        parsed: File,
+        parsed: ParsedFile,
         /,
         *,
         steps: StepMapperProto,
-        context_maker: Callable[[], Any] | None
-    )
+        context_maker: Optional
+    ) -> rumex.runner.ExecutedFile
 
 Run the tests.
 
@@ -55,7 +55,7 @@ Protocol methods
     iter_steps(
         self,
         scenario: Scenario
-    )
+    ) -> collections.abc.Iterable
 
 Build callables representing steps of a scenario.
 
@@ -198,7 +198,7 @@ you can do:
     iter_steps(
         self,
         scenario: Scenario
-    )
+    ) -> collections.abc.Iterable
 
 See documentation of `StepMapperProto`.
 
@@ -218,7 +218,7 @@ rumex.find_input_files
         *,
         root: Path,
         extension: str
-    )
+    ) -> collections.abc.Sequence
 
 Find regular files and return them as `InputFile[s]`.
 
@@ -238,7 +238,7 @@ rumex.parsing.parser.parse
         state_machine: StateMachine = rumex.parsing.parser.StateMachine,
         make_builder=rumex.parsing.builder.FileBuilder,
         token_iterator=rumex.parsing.tokenizer.iter_tokens
-    )
+    ) -> rumex.parsing.core.ParsedFile
 
 Text in, object out.
 
@@ -251,9 +251,9 @@ rumex.run
 
     rumex.run(
         *,
-        files: Iterable[InputFile],
+        files: Iterable,
         steps: StepMapperProto,
-        context_maker: Callable[[], Any] | None = None,
+        context_maker: Optional = None,
         parser: ParserProto = rumex.parsing.parser.parse,
         executor: ExecutorProto = rumex.runner.execute_file,
         reporter=rumex.runner.report,
@@ -267,8 +267,8 @@ Rumex entry point for running tests.
 - files: Files to be parsed and executed.
 - steps: See `StepMapper` or `StepMapperProto` for more info.
 - context_maker: A callable that returns an object that can be passed to step functions.
-- parser: A callable that takes `InputFile` and returns `File`.
-- executor: A callable that takes `File` `steps` and `context_maker` and returns `ExecutedFile`.
+- parser: A callable that takes `InputFile` and returns `ParsedFile`.
+- executor: A callable that takes `ParsedFile` `steps` and `context_maker` and returns `ExecutedFile`.
 - reporter: A callable that takes the collection of all executed files. This can be as simple as raising an exception if any of the executed files is a `FailedFile`.
 - map\_: Must have the same interface as the Python's built-in `map`. Custom implementation might be used to speed up file parsing or execution.
 
@@ -278,16 +278,22 @@ rumex.runner.execute_file
 .. code::
 
     rumex.runner.execute_file(
-        parsed_file: File,
+        parsed_file: ParsedFile,
         /,
         *,
-        context_maker: Callable[[], Any] | None,
-        steps: StepMapperProto
+        context_maker: Optional,
+        steps: StepMapperProto,
+        skip_scenario_tag: str | NoneType = None
     )
 
 Executed a single test file.
 
+.. rubric:: Parameters
 
+- parsed_file: File to be executed.
+- context_maker: Callable returning context object that will be passed to steps.
+- steps: Step mapper that can generate executable steps for all the steps defined in the `parsed_file`.
+- skip_scenario_tag: If a scenario in the `parsed_file` contains this tag, the scenario will not be executed.
 
 
 Collections
@@ -343,13 +349,24 @@ Items
 
  - TokenKind.SCENARIO_KW
 
-  0. State.NEW_SCENARIO
+  0. State.SCENARIO
   1. :
 
   .. code:: python
 
-    def new_scenario(builder, scenario_name):
+    def new_scenario_from_name(builder, scenario_name):
         builder.new_scenario(scenario_name)
+
+ - TokenKind.SCENARIO_TAG
+
+  0. State.SCENARIO_WO_NAME
+  1. :
+
+  .. code:: python
+
+    def new_scenario_from_tag(builder, tag):
+        builder.new_scenario()
+        builder.current_scenario_builder.tags.append(tag)
 
  - TokenKind.DESCRIPTION
 
@@ -406,13 +423,24 @@ Items
 
  - TokenKind.SCENARIO_KW
 
-  0. State.NEW_SCENARIO
+  0. State.SCENARIO
   1. :
 
   .. code:: python
 
-    def new_scenario(builder, scenario_name):
+    def new_scenario_from_name(builder, scenario_name):
         builder.new_scenario(scenario_name)
+
+ - TokenKind.SCENARIO_TAG
+
+  0. State.SCENARIO_WO_NAME
+  1. :
+
+  .. code:: python
+
+    def new_scenario_from_tag(builder, tag):
+        builder.new_scenario()
+        builder.current_scenario_builder.tags.append(tag)
 
 
 - State.FILE_DESCRIPTION
@@ -439,13 +467,24 @@ Items
 
  - TokenKind.SCENARIO_KW
 
-  0. State.NEW_SCENARIO
+  0. State.SCENARIO
   1. :
 
   .. code:: python
 
-    def new_scenario(builder, scenario_name):
+    def new_scenario_from_name(builder, scenario_name):
         builder.new_scenario(scenario_name)
+
+ - TokenKind.SCENARIO_TAG
+
+  0. State.SCENARIO_WO_NAME
+  1. :
+
+  .. code:: python
+
+    def new_scenario_from_tag(builder, tag):
+        builder.new_scenario()
+        builder.current_scenario_builder.tags.append(tag)
 
  - TokenKind.STEP_KW
 
@@ -458,11 +497,11 @@ Items
         builder.description.append(line)
 
 
-- State.NEW_SCENARIO
+- State.SCENARIO
 
  - TokenKind.BLANK_LINE
 
-  0. State.NEW_SCENARIO
+  0. State.SCENARIO
   1. :
 
   .. code:: python
@@ -489,6 +528,50 @@ Items
 
     def append_scenario_description(builder, line):
         builder.current_scenario_builder.description.append(line)
+
+ - TokenKind.SCENARIO_KW
+
+  0. State.SCENARIO
+  1. :
+
+  .. code:: python
+
+    def new_scenario_from_name(builder, scenario_name):
+        builder.new_scenario(scenario_name)
+
+ - TokenKind.SCENARIO_TAG
+
+  0. State.SCENARIO_WO_NAME
+  1. :
+
+  .. code:: python
+
+    def new_scenario_from_tag(builder, tag):
+        builder.new_scenario()
+        builder.current_scenario_builder.tags.append(tag)
+
+
+- State.SCENARIO_WO_NAME
+
+ - TokenKind.SCENARIO_KW
+
+  0. State.SCENARIO
+  1. :
+
+  .. code:: python
+
+    def set_scenario_name(builder, scenario_name):
+        builder.current_scenario_builder.name = scenario_name
+
+ - TokenKind.SCENARIO_TAG
+
+  0. State.SCENARIO_WO_NAME
+  1. :
+
+  .. code:: python
+
+    def add_scenario_tag(builder, tag):
+        builder.current_scenario_builder.tags.append(tag)
 
 
 - State.SCENARIO_DESCRIPTION
@@ -522,6 +605,27 @@ Items
 
     def new_step(builder, sentence):
         builder.current_scenario_builder.new_step(sentence)
+
+ - TokenKind.SCENARIO_KW
+
+  0. State.SCENARIO
+  1. :
+
+  .. code:: python
+
+    def new_scenario_from_name(builder, scenario_name):
+        builder.new_scenario(scenario_name)
+
+ - TokenKind.SCENARIO_TAG
+
+  0. State.SCENARIO_WO_NAME
+  1. :
+
+  .. code:: python
+
+    def new_scenario_from_tag(builder, tag):
+        builder.new_scenario()
+        builder.current_scenario_builder.tags.append(tag)
 
 
 - State.STEP
@@ -565,6 +669,27 @@ Items
 
     def no_op(*_):
         pass
+
+ - TokenKind.SCENARIO_KW
+
+  0. State.SCENARIO
+  1. :
+
+  .. code:: python
+
+    def new_scenario_from_name(builder, scenario_name):
+        builder.new_scenario(scenario_name)
+
+ - TokenKind.SCENARIO_TAG
+
+  0. State.SCENARIO_WO_NAME
+  1. :
+
+  .. code:: python
+
+    def new_scenario_from_tag(builder, tag):
+        builder.new_scenario()
+        builder.current_scenario_builder.tags.append(tag)
 
 
 - State.BLOCK_OF_TEXT
@@ -624,9 +749,20 @@ Items
         builder.current_scenario_builder.current_step_builder.add_text_block_line(
                 line)
 
+ - TokenKind.SCENARIO_TAG
+
+  0. State.BLOCK_OF_TEXT
+  1. :
+
+  .. code:: python
+
+    def add_text_block_line(builder, line):
+        builder.current_scenario_builder.current_step_builder.add_text_block_line(
+                line)
+
  - TokenKind.TRIPLE_QUOTE
 
-  0. State.NEW_SCENARIO
+  0. State.SCENARIO
   1. :
 
   .. code:: python
@@ -649,11 +785,28 @@ Elements
 
   .. code:: python
 
+    def match_triple_quote(line):
+        if line.strip() == '"""':
+            return TokenKind.TRIPLE_QUOTE, None
+
+  1:
+
+  .. code:: python
+
     def match_name(line):
         if name := match_keyword('Name', line=line):
             return TokenKind.NAME_KW, name
 
-  1:
+  2:
+
+  .. code:: python
+
+    def match_scenario_tag(line):
+        if match_ := re.match(r'^\s*@(\w+)\s*$', line):
+            tag, = match_.groups()
+            return TokenKind.SCENARIO_TAG, tag
+
+  3:
 
   .. code:: python
 
@@ -661,15 +814,7 @@ Elements
         if name := match_keyword('Scenario', line=line):
             return TokenKind.SCENARIO_KW, name
 
-  2:
-
-  .. code:: python
-
-    def match_triple_quote(line):
-        if line.strip() == '"""':
-            return TokenKind.TRIPLE_QUOTE, None
-
-  3:
+  4:
 
   .. code:: python
 
@@ -678,7 +823,7 @@ Elements
         if stripped.startswith(('Given ', 'When ', 'Then ', 'And ')):
             return TokenKind.STEP_KW, line
 
-  4:
+  5:
 
   .. code:: python
 
@@ -686,7 +831,7 @@ Elements
         if not line.strip():
             return TokenKind.BLANK_LINE, line
 
-  5:
+  6:
 
   .. code:: python
 
@@ -710,7 +855,8 @@ Elements
  - START
  - FILE_NAME
  - FILE_DESCRIPTION
- - NEW_SCENARIO
+ - SCENARIO
+ - SCENARIO_WO_NAME
  - STEP
  - BLOCK_OF_TEXT
  - SCENARIO_DESCRIPTION
@@ -718,7 +864,7 @@ Elements
 rumex.parsing.tokenizer.TokenKind
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-An enumeration.
+Basic identifiers for syntactic meaning of a (part of) line.
 
 Elements
 ........
@@ -730,3 +876,4 @@ Elements
  - BLANK_LINE
  - DESCRIPTION
  - TRIPLE_QUOTE
+ - SCENARIO_TAG

@@ -2,6 +2,7 @@ from dataclasses import dataclass
 import textwrap
 
 from rumex.parsing.parser import InputFile
+from rumex.runner import IgnoredStep, MatchingFunctionNotFound
 
 from .test_no_execution_cases import Reporter
 
@@ -211,3 +212,73 @@ def test_scenario_with_a_description_and_a_step(run, get_step_mapper, **_):
     scenario, = executed_file.scenarios
     assert scenario.success
     assert scenario.description == 'First a description, then a step.'
+
+
+def test_2_scenarios(run, get_step_mapper, **_):
+    text = textwrap.dedent('''
+        Name: Test file.
+
+        Scenario: My scenario.
+            Given something
+
+        Scenario: My 2nd scenario.
+            Given anything
+    ''')
+    uri = 'test_file'
+
+    steps = get_step_mapper()
+
+    @steps(r'thing')
+    def given_():
+        pass
+
+    reporter = Reporter()
+    run(
+        files=[InputFile(uri=uri, text=text)],
+        reporter=reporter,
+        steps=steps,
+    )
+
+    executed, = reporter.reported
+
+    scenario_1, scenario_2 = executed.scenarios
+    assert scenario_1.name == 'My scenario.'
+    assert scenario_2.name == 'My 2nd scenario.'
+
+
+def test_unimplemented_scenario(run, get_step_mapper, **_):
+    text = textwrap.dedent('''
+        Name: Test file.
+
+        Scenario: My scenario.
+            Given stuff
+            And anything
+            And more stuff
+            Then something
+    ''')
+    uri = 'test_file'
+
+    steps = get_step_mapper()
+
+    @steps(r'stuff')
+    def given_():
+        pass
+
+    reporter = Reporter()
+    run(
+        files=[InputFile(uri=uri, text=text)],
+        reporter=reporter,
+        steps=steps,
+    )
+
+    executed, = reporter.reported
+    scenario, = executed.scenarios
+    assert not scenario.success
+    passed, failed_1, ignored, failed_2 = scenario.steps
+    assert passed.success
+    assert not failed_1.success
+    assert isinstance(failed_1.exception, MatchingFunctionNotFound)
+    assert not ignored.success
+    assert isinstance(ignored, IgnoredStep)
+    assert not failed_2.success
+    assert isinstance(failed_2.exception, MatchingFunctionNotFound)

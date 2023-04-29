@@ -107,8 +107,8 @@ state_machine_extensions = {
     State.FILE_NAME: {
         broken_line_token: (State.FILE_NAME, extend_file_name),
     },
-    State.NEW_SCENARIO: {
-        broken_line_token: (State.NEW_SCENARIO, extend_scenario_name),
+    State.SCENARIO: {
+        broken_line_token: (State.SCENARIO, extend_scenario_name),
     },
     State.STEP: {
         broken_line_token: (State.STEP, extend_step_sentence),
