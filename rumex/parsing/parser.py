@@ -1,39 +1,14 @@
-from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from collections.abc import Mapping
 from enum import Enum, auto
 from typing import Protocol
 
 from .builder import FileBuilder
-from .core import InputFile, File
+from .core import InputFile, ParsedFile
 from .tokenizer import TokenKind, iter_tokens
 
 
 class CannotParseLine(Exception):
     pass
-
-
-@dataclass(frozen=True, kw_only=True)
-class Step:
-
-    sentence: str
-    data: type
-
-
-@dataclass(frozen=True, kw_only=True)
-class Scenario:
-
-    name: str
-    description: str
-    steps: Sequence[Step]
-
-
-@dataclass(frozen=True, kw_only=True)
-class ParsedFile:
-
-    name: str
-    description: str
-    scenarios: Sequence[Scenario]
-    uri: str
 
 
 class ParserProto(Protocol):
@@ -48,7 +23,8 @@ class State(Enum):
     START = auto()
     FILE_NAME = auto()
     FILE_DESCRIPTION = auto()
-    NEW_SCENARIO = auto()
+    SCENARIO = auto()
+    SCENARIO_WO_NAME = auto()
     STEP = auto()
     BLOCK_OF_TEXT = auto()
     SCENARIO_DESCRIPTION = auto()
@@ -89,8 +65,21 @@ class StateMachine(Mapping):
         return len(self._transitions)
 
 
-def new_scenario(builder, scenario_name):
+def new_scenario_from_name(builder, scenario_name):
     builder.new_scenario(scenario_name)
+
+
+def set_scenario_name(builder, scenario_name):
+    builder.current_scenario_builder.name = scenario_name
+
+
+def new_scenario_from_tag(builder, tag):
+    builder.new_scenario()
+    builder.current_scenario_builder.tags.append(tag)
+
+
+def add_scenario_tag(builder, tag):
+    builder.current_scenario_builder.tags.append(tag)
 
 
 def no_op(*_):
@@ -126,7 +115,9 @@ default_state_machine = StateMachine({
     State.START: {
         TokenKind.NAME_KW: (State.FILE_NAME, set_file_name),
         TokenKind.BLANK_LINE: (State.START, no_op),
-        TokenKind.SCENARIO_KW: (State.NEW_SCENARIO, new_scenario),
+        TokenKind.SCENARIO_KW: (State.SCENARIO, new_scenario_from_name),
+        TokenKind.SCENARIO_TAG: (
+            State.SCENARIO_WO_NAME, new_scenario_from_tag),
         TokenKind.DESCRIPTION: (
             State.FILE_DESCRIPTION, append_file_description),
 
@@ -145,7 +136,9 @@ default_state_machine = StateMachine({
         # does not mean anything special.
         TokenKind.STEP_KW: (
             State.FILE_DESCRIPTION, append_file_description),
-        TokenKind.SCENARIO_KW: (State.NEW_SCENARIO, new_scenario),
+        TokenKind.SCENARIO_KW: (State.SCENARIO, new_scenario_from_name),
+        TokenKind.SCENARIO_TAG: (
+            State.SCENARIO_WO_NAME, new_scenario_from_tag),
     },
 
     State.FILE_DESCRIPTION: {
@@ -153,7 +146,9 @@ default_state_machine = StateMachine({
             State.FILE_DESCRIPTION, append_file_description),
         TokenKind.DESCRIPTION: (
             State.FILE_DESCRIPTION, append_file_description),
-        TokenKind.SCENARIO_KW: (State.NEW_SCENARIO, new_scenario),
+        TokenKind.SCENARIO_KW: (State.SCENARIO, new_scenario_from_name),
+        TokenKind.SCENARIO_TAG: (
+            State.SCENARIO_WO_NAME, new_scenario_from_tag),
 
         # Step keyword outside of scenario context
         # does not mean anything special.
@@ -161,11 +156,20 @@ default_state_machine = StateMachine({
             State.FILE_DESCRIPTION, append_file_description),
     },
 
-    State.NEW_SCENARIO: {
-        TokenKind.BLANK_LINE: (State.NEW_SCENARIO, no_op),
+    State.SCENARIO: {
+        TokenKind.BLANK_LINE: (State.SCENARIO, no_op),
         TokenKind.STEP_KW: (State.STEP, new_step),
         TokenKind.DESCRIPTION: (
             State.SCENARIO_DESCRIPTION, append_scenario_description),
+        TokenKind.SCENARIO_KW: (State.SCENARIO, new_scenario_from_name),
+        TokenKind.SCENARIO_TAG: (
+            State.SCENARIO_WO_NAME, new_scenario_from_tag),
+    },
+
+    State.SCENARIO_WO_NAME: {
+        TokenKind.SCENARIO_KW: (State.SCENARIO, set_scenario_name),
+        TokenKind.SCENARIO_TAG: (
+            State.SCENARIO_WO_NAME, add_scenario_tag),
     },
 
     State.SCENARIO_DESCRIPTION: {
@@ -174,6 +178,9 @@ default_state_machine = StateMachine({
         TokenKind.BLANK_LINE: (
             State.SCENARIO_DESCRIPTION, append_scenario_description),
         TokenKind.STEP_KW: (State.STEP, new_step),
+        TokenKind.SCENARIO_KW: (State.SCENARIO, new_scenario_from_name),
+        TokenKind.SCENARIO_TAG: (
+            State.SCENARIO_WO_NAME, new_scenario_from_tag),
     },
 
     State.STEP: {
@@ -181,12 +188,15 @@ default_state_machine = StateMachine({
         TokenKind.DESCRIPTION: (State.STEP, add_step_data),
         TokenKind.TRIPLE_QUOTE: (State.BLOCK_OF_TEXT, no_op),
         TokenKind.BLANK_LINE: (State.STEP, no_op),
+        TokenKind.SCENARIO_KW: (State.SCENARIO, new_scenario_from_name),
+        TokenKind.SCENARIO_TAG: (
+            State.SCENARIO_WO_NAME, new_scenario_from_tag),
     },
 
     State.BLOCK_OF_TEXT: {
             kind: (State.BLOCK_OF_TEXT, add_text_block_line)
             for kind in TokenKind if kind != TokenKind.TRIPLE_QUOTE
-    } | {TokenKind.TRIPLE_QUOTE: (State.NEW_SCENARIO, no_op)},
+    } | {TokenKind.TRIPLE_QUOTE: (State.SCENARIO, no_op)},
 })
 
 
@@ -196,10 +206,8 @@ def parse(
         state_machine: StateMachine = default_state_machine,
         make_builder=FileBuilder,
         token_iterator=iter_tokens,
-) -> File:
-    """Text in, object out.
-
-    """
+) -> ParsedFile:
+    """Text in, object out."""
     state = State.START
     builder = make_builder()
 

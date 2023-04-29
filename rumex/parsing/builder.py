@@ -1,6 +1,6 @@
 import textwrap
 
-from .core import File, Scenario, Step
+from .core import ParsedFile, Scenario, Step
 from .table import parse_table_line
 
 
@@ -72,6 +72,7 @@ class ScenarioBuilder:
         self.name = name
         self._step_builders = []
         self.description = []
+        self.tags = []
 
     @property
     def current_step_builder(self):
@@ -91,6 +92,7 @@ class ScenarioBuilder:
                 name=self.name,
                 description=formatted_description,
                 steps=[builder.get_built() for builder in self._step_builders],
+                tags=tuple(self.tags),
         )
 
 
@@ -105,8 +107,8 @@ class FileBuilder:
     def current_scenario_builder(self):
         return self._scenario_builders[-1]
 
-    def new_scenario(self, scenario_name):
-        self._scenario_builders.append(ScenarioBuilder(scenario_name))
+    def new_scenario(self, name=None):
+        self._scenario_builders.append(ScenarioBuilder(name))
 
     def get_built(self, *, uri):
         if self.description:
@@ -115,7 +117,7 @@ class FileBuilder:
         else:
             formatted_description = None
 
-        return File(
+        return ParsedFile(
             name=self.name,
             description=formatted_description,
             scenarios=[
