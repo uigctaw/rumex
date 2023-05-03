@@ -70,7 +70,7 @@ def test_success(run, get_step_mapper, **_):  # pylint: disable=too-many-locals
 
     @dataclass
     class Context:
-        value: float = None
+        value: float | None = None
 
     @steps('Given 2')
     def given_(*, context):

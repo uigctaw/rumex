@@ -49,6 +49,7 @@ class ExecutedScenario:
     description: str
     steps: Sequence[ExecutedStep]
     tags: Sequence[str]
+    example_number: int
 
 
 class PassedScenario(ExecutedScenario):
@@ -68,8 +69,8 @@ class ExecutedFile:
 
     scenarios: tuple[ExecutedScenario, ...]
     uri: str
-    name: str
-    description: str
+    name: str | None
+    description: str | None
 
     def __new__(cls, *, scenarios, **_):
         if all(s.success for s in scenarios):
@@ -170,41 +171,59 @@ def execute_scenario(
         steps,
         skip_scenario_tag,
 ):
+    executed_scenarios = []
+    for example_num, scenario_steps in enumerate(
+            steps.iter_steps(scenario), start=1):
+
+        if skip_scenario_tag in scenario.tags:
+            cls = SkippedScenario
+            executed_steps = []
+        else:
+            cls, executed_steps = _execute_scenario(
+                    steps=scenario_steps,
+                    context_maker=context_maker,
+            )
+
+        executed_scenario = cls(
+                name=scenario.name,
+                description=scenario.description,
+                steps=tuple(executed_steps),
+                tags=scenario.tags,
+                example_number=example_num,
+        )
+        executed_scenarios.append(executed_scenario)
+    return executed_scenarios
+
+
+def _execute_scenario(*, steps, context_maker):
     executed_steps = []
-    if skip_scenario_tag in scenario.tags:
-        cls = SkippedScenario
-    else:
-        failed = False
-        context = context_maker()
-        for step_ in steps.iter_steps(scenario):
-            if isinstance(step_, MissingStep):
+    failed = False
+    context = context_maker()
+    executed: _ExecutedStep
+    for step_ in steps:
+        if isinstance(step_, MissingStep):
+            failed = True
+            executed = FailedStep(
+                exception=MatchingFunctionNotFound(step_.sentence),
+                sentence=step_.sentence,
+            )
+        elif failed:
+            executed = IgnoredStep(sentence=step_.sentence)
+        else:
+            try:
+                step_(context=context)
+            except Exception as exc:  # pylint: disable=broad-except
                 failed = True
                 executed = FailedStep(
-                    exception=MatchingFunctionNotFound(step_.sentence),
-                    sentence=step_.sentence,
+                        exception=exc,
+                        sentence=step_.sentence,
                 )
-            elif failed:
-                executed = IgnoredStep(sentence=step_.sentence)
             else:
-                try:
-                    step_(context=context)
-                except Exception as exc:  # pylint: disable=broad-except
-                    failed = True
-                    executed = FailedStep(
-                            exception=exc,
-                            sentence=step_.sentence,
-                    )
-                else:
-                    executed = PassedStep(sentence=step_.sentence)
-            executed_steps.append(executed)
-        cls = FailedScenario if failed else PassedScenario
+                executed = PassedStep(sentence=step_.sentence)
+        executed_steps.append(executed)
+    cls = FailedScenario if failed else PassedScenario
 
-    return cls(
-            name=scenario.name,
-            description=scenario.description,
-            steps=tuple(executed_steps),
-            tags=scenario.tags,
-    )
+    return cls, executed_steps
 
 
 def execute_file(
@@ -236,14 +255,15 @@ def execute_file(
 
     context_maker = context_maker or (lambda: None)
     executed_scenarios: list[ExecutedScenario] = []
+
     for scenario in parsed_file.scenarios:
-        executed_scenario = execute_scenario(
+        executed = execute_scenario(
                 scenario,
                 steps=steps,
                 context_maker=context_maker,
                 skip_scenario_tag=skip_scenario_tag,
         )
-        executed_scenarios.append(executed_scenario)
+        executed_scenarios.extend(executed)
 
     return ExecutedFile(
             scenarios=tuple(executed_scenarios),
@@ -378,6 +398,7 @@ class StepMapper:
 
     def _add_step_fn(self, fn, /, *, pattern):
         self._pattern_to_fn[re.compile(pattern)] = fn
+        return fn
 
     def _wrap_mapped_function(self, *, fn_spec, fn, mapped_args, data):
 
@@ -391,8 +412,7 @@ class StepMapper:
 
         return wrapped
 
-    def _prepare_step(self, step_):
-        sentence = step_.sentence
+    def _prepare_step(self, *, sentence, data):
         for pattern, fn in self._pattern_to_fn.items():
             if match_ := pattern.search(sentence):
                 args = match_.groups()
@@ -405,7 +425,7 @@ class StepMapper:
                     fn_spec=spec,
                     fn=fn,
                     mapped_args=mapped_args,
-                    data=step_.data,
+                    data=data,
                     )
 
         return None
@@ -415,12 +435,76 @@ class StepMapper:
             scenario: Scenario,
     ) -> Iterable[ExecutableStep | MissingStep]:
         """See documentation of `StepMapperProto`."""
+        for example_data in scenario.examples_data or [{}]:
+            yield self._iter_steps(scenario, example_data=example_data)
+
+    def _iter_steps(self, scenario, example_data):
         if (hook := self._hooks.run_before_scenario):
             yield ExecutableStep(sentence=hook.name, callable_=hook.fn)
         for step_ in scenario.steps:
             if (hook := self._hooks.run_before_step):
                 yield ExecutableStep(sentence=hook.name, callable_=hook.fn)
-            if (fn := self._prepare_step(step_)):
-                yield ExecutableStep(sentence=step_.sentence, callable_=fn)
+
+            sentence = self._evaluate_sentence(
+                    template=step_.sentence,
+                    example_data=example_data,
+            )
+            data = self._evaluate_step_data(
+                    template=step_.data,
+                    example_data=example_data,
+            )
+
+            callable_ = self._prepare_step(sentence=sentence, data=data)
+
+            if callable_:
+                yield ExecutableStep(
+                        sentence=sentence, callable_=callable_)
             else:
-                yield MissingStep(sentence=step_.sentence)
+                yield MissingStep(sentence=sentence)
+
+    def _evaluate_sentence(self, *, template, example_data):
+        return self._evaluate_line(
+                template=template, example_data=example_data)
+
+    def _evaluate_line(self, template: str, *, example_data) -> str:
+        pattern = re.compile(r'(?:^|[^\\])(?:\\\\)*(<(\w+)>)')
+        line = template
+        while match_ := re.search(pattern, line):
+            _, end = match_.span()
+            outer, key = match_.groups()
+            start = end - len(outer)
+            value = example_data[key]
+            line = line[:start] + value + line[end:]
+        return line
+
+    def _evaluate_step_data(self, *, template, example_data):
+        if template is None:
+            return template
+
+        if isinstance(template, str):
+            return self._evaluate_step_text(
+                    template, example_data=example_data)
+
+        return self._evaluate_step_data_table(
+                template, example_data=example_data)
+
+    def _evaluate_step_text(self, template, *, example_data):
+        return '\n'.join(
+                self._evaluate_line(line, example_data=example_data)
+                for line in template.splitlines()
+        )
+
+    def _evaluate_step_data_table(
+            self,
+            table_template: Sequence[dict[str, str]],
+            *,
+            example_data,
+    ) -> tuple[dict[str, str], ...]:
+        return tuple(
+            {
+                self._evaluate_line(key, example_data=example_data):
+                    self._evaluate_line(value, example_data=example_data)
+                for key, value in row.items()
+            }
+            for row in table_template
+        )

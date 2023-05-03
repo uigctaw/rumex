@@ -28,6 +28,7 @@ class State(Enum):
     STEP = auto()
     BLOCK_OF_TEXT = auto()
     SCENARIO_DESCRIPTION = auto()
+    SCENARIO_EXAMPLES = auto()
 
 
 class StateMachine(Mapping):
@@ -104,6 +105,10 @@ def append_scenario_description(builder, line):
 
 def add_step_data(builder, data):
     builder.current_scenario_builder.current_step_builder.add_step_data(data)
+
+
+def add_scenario_example(builder, data):
+    builder.current_scenario_builder.add_example(data)
 
 
 def add_text_block_line(builder, line):
@@ -188,6 +193,15 @@ default_state_machine = StateMachine({
         TokenKind.DESCRIPTION: (State.STEP, add_step_data),
         TokenKind.TRIPLE_QUOTE: (State.BLOCK_OF_TEXT, no_op),
         TokenKind.BLANK_LINE: (State.STEP, no_op),
+        TokenKind.SCENARIO_KW: (State.SCENARIO, new_scenario_from_name),
+        TokenKind.SCENARIO_TAG: (
+            State.SCENARIO_WO_NAME, new_scenario_from_tag),
+        TokenKind.EXAMPLES: (State.SCENARIO_EXAMPLES, no_op),
+    },
+
+    State.SCENARIO_EXAMPLES: {
+        TokenKind.DESCRIPTION: (State.SCENARIO_EXAMPLES, add_scenario_example),
+        TokenKind.BLANK_LINE: (State.SCENARIO_EXAMPLES, no_op),
         TokenKind.SCENARIO_KW: (State.SCENARIO, new_scenario_from_name),
         TokenKind.SCENARIO_TAG: (
             State.SCENARIO_WO_NAME, new_scenario_from_tag),
