@@ -157,7 +157,7 @@ def _iter_enum_signature(enum_, *, name):
 
 
 def _get_protocol_signature(proto, *, name):
-    attrs = typing._get_protocol_attrs(proto)
+    attrs = typing._get_protocol_attrs(proto)  # type: ignore [attr-defined]
     return '\n'.join(
             _iter_protocol_signature(cls=proto, attrs=attrs, name=name))
 
@@ -229,7 +229,7 @@ def _get_dataclass_signature(dc, *, name):
 def _get_fn_or_dc_signature(obj, *, name):
     sig = inspect.signature(obj)
     p = inspect.Parameter
-    accumulator = {
+    accumulator: dict[int | str, list[str] | None] = {
             p.POSITIONAL_ONLY: [],
             'slash': None,
             p.POSITIONAL_OR_KEYWORD: [],
@@ -240,7 +240,8 @@ def _get_fn_or_dc_signature(obj, *, name):
     for param in sig.parameters.values():
         if param.kind not in accumulator:
             1/0
-        accumulator[param.kind].append(_format_param(param, obj=obj))
+        accumulator[param.kind].append(  # type: ignore [union-attr]
+                _format_param(param, obj=obj))
         if param.kind == p.POSITIONAL_ONLY:
             accumulator['slash'] = ['/']
         elif param.kind == p.KEYWORD_ONLY:
@@ -277,7 +278,7 @@ def _general_description(obj):
 def _iter_general_description(description):
     lines = description.splitlines()
     in_code = False
-    code_section = []
+    code_section: list[str] = []
     for line in lines:
         if line.strip() == '```':
             in_code = not in_code
@@ -373,7 +374,10 @@ def _default_to_str(default, *, name, owner):
         fn, = ast.parse(inspect.getsource(owner)).body
         default_value_name = next(
             value.id
-            for key, value in zip(fn.args.kwonlyargs, fn.args.kw_defaults)
+            for key, value in zip(
+                fn.args.kwonlyargs,  # type: ignore [attr-defined]
+                fn.args.kw_defaults,  # type: ignore [attr-defined]
+            )
             if key.arg == name
         )
         ret = owner.__module__ + '.' + default_value_name
@@ -412,10 +416,10 @@ def main():
             'api': 'docs/api'
     }
     for source, target in source_to_target.items():
-        source = THIS_DIR.joinpath(source + '.rst.template')
-        target = PROJECT_DIR.joinpath(target + '.rst')
-        readme_text = get_built_text(source)
-        save_readme(readme_text, target=target)
+        source_path = THIS_DIR.joinpath(source + '.rst.template')
+        target_path = PROJECT_DIR.joinpath(target + '.rst')
+        readme_text = get_built_text(source_path)
+        save_readme(readme_text, target=target_path)
 
 
 if __name__ == '__main__':

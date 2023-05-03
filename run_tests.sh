@@ -7,7 +7,7 @@ poetry run pytest tests ; echo Success!
 echo -e "\nBandit:"
 poetry run bandit -c pyproject.toml -r . ; echo Success!
 echo -e "\nMypy:"
-poetry run mypy . --show-error-codes ; echo Success!
+poetry run mypy . --show-error-codes --check-untyped-defs ; echo Success!
 echo -e "\nFlake8:"
 poetry run flake8 --per-file-ignores="rumex/__init__.py:F401" . ; echo Success!
 echo -e "\nPylint rumex:"

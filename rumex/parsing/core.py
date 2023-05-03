@@ -26,23 +26,24 @@ class InputFile:
 class Step:
 
     sentence: str
-    data: type
+    data: Sequence[dict[str, str]]
 
 
 @dataclass(frozen=True, kw_only=True)
 class Scenario:
 
     name: str
-    description: str
+    description: str | None
     steps: Sequence[Step]
     tags: Sequence[str]
+    examples_data: Sequence[dict[str, str]]
 
 
 @dataclass(frozen=True, kw_only=True)
 class ParsedFile:
 
-    name: str
-    description: str
+    name: str | None
+    description: str | None
     scenarios: Sequence[Scenario]
     uri: str
 

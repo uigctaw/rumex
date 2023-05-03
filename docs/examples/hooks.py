@@ -33,6 +33,7 @@ def before_scenario(context: Context):
 
 @steps.before_step
 def before_step(context: Context):
+    assert context.step_counter is not None
     context.step_counter += 1
 
 

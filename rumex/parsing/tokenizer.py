@@ -19,6 +19,7 @@ class TokenKind(Enum):
     DESCRIPTION = auto()
     TRIPLE_QUOTE = auto()
     SCENARIO_TAG = auto()
+    EXAMPLES = auto()
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -53,6 +54,11 @@ def match_scenario(line):
 def match_name(line):
     if name := match_keyword('Name', line=line):
         return TokenKind.NAME_KW, name
+
+
+def match_examples(line):
+    if re.match(r'^\s*Examples:\s*$', line):
+        return TokenKind.EXAMPLES, None
 
 
 def match_triple_quote(line):
@@ -99,6 +105,7 @@ default_tokenizers = Tokenizers(
     match_scenario_tag,
     match_scenario,
     match_step,
+    match_examples,
     match_blank_line,
     match_description,
 )

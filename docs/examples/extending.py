@@ -155,9 +155,11 @@ rumex.run(
 )
 
 
+assert reporter.executed_file
 assert reporter.executed_file.name == (
         'Extending parser example by introducing line breaks.')
 
+assert reporter.executed_file
 scenario, = reporter.executed_file.scenarios
 assert scenario.name == 'Simple arithmetics or perhaps not so simple'
 

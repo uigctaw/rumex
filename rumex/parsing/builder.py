@@ -22,7 +22,8 @@ class TableBuilder:
             self._data.append(row)
 
     def get_built(self):
-        return tuple(dict(zip(self._header, row)) for row in self._data)
+        header = self._header or []
+        return tuple(dict(zip(header, row)) for row in self._data)
 
 
 class TextBlockBuilder:
@@ -73,6 +74,7 @@ class ScenarioBuilder:
         self._step_builders = []
         self.description = []
         self.tags = []
+        self._examples_builder = TableBuilder()
 
     @property
     def current_step_builder(self):
@@ -81,18 +83,21 @@ class ScenarioBuilder:
     def new_step(self, sentence):
         self._step_builders.append(StepBuilder(sentence))
 
+    def add_example(self, line):
+        self._examples_builder.consume(line)
+
     def get_built(self):
         if self.description:
             formatted_description = textwrap.dedent(
                     '\n'.join(self.description)).strip()
         else:
             formatted_description = None
-
         return Scenario(
                 name=self.name,
                 description=formatted_description,
                 steps=[builder.get_built() for builder in self._step_builders],
                 tags=tuple(self.tags),
+                examples_data=self._examples_builder.get_built(),
         )
 
 

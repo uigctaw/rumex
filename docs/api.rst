@@ -691,6 +691,60 @@ Items
         builder.new_scenario()
         builder.current_scenario_builder.tags.append(tag)
 
+ - TokenKind.EXAMPLES
+
+  0. State.SCENARIO_EXAMPLES
+  1. :
+
+  .. code:: python
+
+    def no_op(*_):
+        pass
+
+
+- State.SCENARIO_EXAMPLES
+
+ - TokenKind.DESCRIPTION
+
+  0. State.SCENARIO_EXAMPLES
+  1. :
+
+  .. code:: python
+
+    def add_scenario_example(builder, data):
+        builder.current_scenario_builder.add_example(data)
+
+ - TokenKind.BLANK_LINE
+
+  0. State.SCENARIO_EXAMPLES
+  1. :
+
+  .. code:: python
+
+    def no_op(*_):
+        pass
+
+ - TokenKind.SCENARIO_KW
+
+  0. State.SCENARIO
+  1. :
+
+  .. code:: python
+
+    def new_scenario_from_name(builder, scenario_name):
+        builder.new_scenario(scenario_name)
+
+ - TokenKind.SCENARIO_TAG
+
+  0. State.SCENARIO_WO_NAME
+  1. :
+
+  .. code:: python
+
+    def new_scenario_from_tag(builder, tag):
+        builder.new_scenario()
+        builder.current_scenario_builder.tags.append(tag)
+
 
 - State.BLOCK_OF_TEXT
 
@@ -750,6 +804,17 @@ Items
                 line)
 
  - TokenKind.SCENARIO_TAG
+
+  0. State.BLOCK_OF_TEXT
+  1. :
+
+  .. code:: python
+
+    def add_text_block_line(builder, line):
+        builder.current_scenario_builder.current_step_builder.add_text_block_line(
+                line)
+
+ - TokenKind.EXAMPLES
 
   0. State.BLOCK_OF_TEXT
   1. :
@@ -827,11 +892,19 @@ Elements
 
   .. code:: python
 
+    def match_examples(line):
+        if re.match(r'^\s*Examples:\s*$', line):
+            return TokenKind.EXAMPLES, None
+
+  6:
+
+  .. code:: python
+
     def match_blank_line(line):
         if not line.strip():
             return TokenKind.BLANK_LINE, line
 
-  6:
+  7:
 
   .. code:: python
 
@@ -860,6 +933,7 @@ Elements
  - STEP
  - BLOCK_OF_TEXT
  - SCENARIO_DESCRIPTION
+ - SCENARIO_EXAMPLES
 
 rumex.parsing.tokenizer.TokenKind
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -877,3 +951,4 @@ Elements
  - DESCRIPTION
  - TRIPLE_QUOTE
  - SCENARIO_TAG
+ - EXAMPLES

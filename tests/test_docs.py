@@ -57,7 +57,7 @@ def test_examples_execute_fine():
 def test_readmes_have_been_reviewed():
     reviewed = {
         'README.rst': 'b8218136029f87f519e825a2a2e54f91def957c2',
-        'api.rst': 'b3fcd7e79db9fecf58ed9547e2c1dc57eac12be9',
+        'api.rst': '2f3f7b8047376a29f3aea2b2f14418980840d92f',
     }
 
     project_root = find_project_root()
