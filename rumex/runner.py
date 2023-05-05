@@ -275,8 +275,18 @@ def execute_file(
 
 def report(files):
     for file in files:
-        if not file.success:
-            raise AssertionError(file)
+        if file.success:
+            continue
+
+        for scenario in file.scenarios:
+            if scenario.success:
+                continue
+
+            for step_ in scenario.steps:
+                if step_.success:
+                    continue
+
+                raise step_.exception
 
 
 def run(
@@ -289,7 +299,7 @@ def run(
         reporter=report,
         map_=map,
 ):
-    """Rumex entry point for running tests.
+    """Entry point for running tests.
 
     Params
     ------

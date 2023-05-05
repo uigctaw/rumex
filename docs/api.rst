@@ -260,7 +260,7 @@ rumex.run
         map_=builtins.map
     )
 
-Rumex entry point for running tests.
+Entry point for running tests.
 
 .. rubric:: Parameters
 
@@ -294,6 +294,22 @@ Executed a single test file.
 - context_maker: Callable returning context object that will be passed to steps.
 - steps: Step mapper that can generate executable steps for all the steps defined in the `parsed_file`.
 - skip_scenario_tag: If a scenario in the `parsed_file` contains this tag, the scenario will not be executed.
+
+rumex.utils.iter_tests
+~~~~~~~~~~~~~~~~~~~~~~
+
+.. code::
+
+    rumex.utils.iter_tests(
+        *,
+        files,
+        steps,
+        context_maker=None
+    ) -> collections.abc.Iterator
+
+Create zero parameter callables for each scenario.
+
+
 
 
 Collections

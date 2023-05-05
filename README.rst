@@ -4,7 +4,9 @@ Rumex
 
 `Behaviour Driven Development`_ (BDD) testing library.
 
-Rumex is a lightweight library alternative to the `behave`_ framework.
+Rumex is trying to be more of a library rather than a framework.
+This approach aims to increase flexibility and reduce dependency
+on design choices made by designers of alternative frameworks.
 
 
 Basic example
@@ -63,20 +65,32 @@ Basic example
 More examples
 ~~~~~~~~~~~~~
 
-See `docs/examples`_
+Perhaps the best way to discover Rumex's fetures is to look at the examples:
+
+`docs/examples`_
 
 
 API
 ---
 
-For complete API documentation see `docs/api`_
+For API documentation see `docs/api`_
+
+
+Some alternatives
+-----------------
+
+- `behave`_
+
+- `pytest-bdd`_
 
 
 .. _`Behaviour Driven Development`:
   https://en.wikipedia.org/wiki/Behavior-driven_development
 
-.. _`behave`: https://github.com/behave/behave
-
 .. _`docs/examples`: docs/examples
 
 .. _`docs/api`: docs/api.rst
+
+.. _`behave`: https://github.com/behave/behave
+
+.. _`pytest-bdd`: https://github.com/pytest-dev/pytest-bdd

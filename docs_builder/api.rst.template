@@ -37,6 +37,7 @@ find_input_files,
 parsing.parser.parse,
 run,
 runner.execute_file,
+utils.iter_tests,
 %%>
 
 
