@@ -56,7 +56,7 @@ def test_examples_execute_fine():
 
 def test_readmes_have_been_reviewed():
     reviewed = {
-        'README.rst': 'f76440c52cc6e4a96f9575816de9195ee9ed71f3',
+        'README.rst': 'a8904d1af84fb1ba5b1f9731496cb7e2dbb07b5b',
         'api.rst': '06c0ef742419600f3510866e8d8a0a89b6fc3e4f',
     }
 

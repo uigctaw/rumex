@@ -8,6 +8,13 @@ Rumex is trying to be more of a library rather than a framework.
 This approach aims to increase flexibility and reduce dependency
 on design choices made by designers of alternative frameworks.
 
+Installation
+------------
+
+.. code::
+
+    pip install rumex
+
 
 Basic example
 -------------
