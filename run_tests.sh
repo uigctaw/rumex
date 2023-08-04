@@ -17,5 +17,7 @@ poetry run pylint tests --disable=unbalanced-tuple-unpacking ; echo Success!
 echo -e "\nPylint docs:"
 poetry run pylint docs --disable="duplicate-code"; echo Success!
 
+aspell check README.rst
+
 echo -e "\nSUCCESS!"
 
