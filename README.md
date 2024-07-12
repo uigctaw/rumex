@@ -1,3 +1,19 @@
+# Rumex
+
+Behaviour Driven Development (BDD) testing library.
+
+Rumex is trying to be more of a library rather than a framework.
+This approach aims to increase flexibility and reduce dependency
+on design choices made by designers of alternative frameworks.
+
+## Installation
+
+```pip install rumex```
+
+
+## Basic example
+
+```python
 import rumex
 
 example_file = rumex.InputFile(
@@ -43,3 +59,21 @@ rumex.run(
     steps=steps,
     context_maker=Context,
 )
+```
+
+## More examples
+
+To discover Rumex's features you can look at the examples in `docs/examples`.
+
+
+## API
+
+For API documentation see `docs/api`
+
+
+## Some alternatives
+
+- [https://github.com/behave/behave](https://github.com/behave/behave)
+
+- [https://github.com/pytest-dev/pytest-bdd](
+    https://github.com/pytest-dev/pytest-bdd)

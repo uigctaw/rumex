@@ -1,14 +1,15 @@
-from collections.abc import Iterable, Iterator, Sequence
-from typing import Callable
-import glob
 import pathlib
+from collections.abc import Callable, Iterable, Iterator, Sequence
 
-from .parsing.parser import InputFile, ParsedFile
 from . import runner
+from .parsing.parser import InputFile, ParsedFile
 
 
 def find_input_files(
-        *, root: pathlib.Path, extension: str) -> Sequence[InputFile]:
+    *,
+    root: pathlib.Path,
+    extension: str,
+) -> Sequence[InputFile]:
     """Find regular files and return them as `InputFile[s]`.
 
     Params
@@ -20,21 +21,24 @@ def find_input_files(
 
 
 def iter_input_files(
-        *, root: pathlib.Path, extension: str) -> Iterable[InputFile]:
-    for file_name in glob.glob('*.' + extension, root_dir=root):
-        file = root.joinpath(file_name)
-        with file.open(encoding='utf8') as fio:
-            text = fio.read()
-        yield InputFile(text=text, uri=str(file))
-    for dir_ in root.glob('*/'):
-        yield from iter_input_files(root=dir_, extension=extension)
+    *,
+    root: pathlib.Path,
+    extension: str,
+) -> Iterable[InputFile]:
+    for dir_path, _, file_names in root.walk():
+        for file_name in file_names:
+            file = dir_path / file_name
+            if file.suffix in (extension, "." + extension):
+                with file.open(encoding="utf8") as fio:
+                    text = fio.read()
+                yield InputFile(text=text, uri=str(file))
 
 
 def iter_tests(
-        *,
-        files,
-        steps,
-        context_maker=None,
+    *,
+    files,
+    steps,
+    context_maker=None,
 ) -> Iterator[
     tuple[
         ParsedFile,
@@ -47,18 +51,18 @@ def iter_tests(
 
     def get_scenario_fn(scenario, *, cm, steps_):
         return lambda: runner.execute_scenario(
-                        scenario,
-                        steps=steps_,
-                        context_maker=cm,
-                        skip_scenario_tag=None,
+            scenario,
+            steps=steps_,
+            context_maker=cm,
+            skip_scenario_tag=None,
         )
 
     def execute_file(
-            parsed_file,
-            /,
-            *,
-            context_maker,
-            steps,
+        parsed_file,
+        /,
+        *,
+        context_maker,
+        steps,
     ):
         scenario_fns = [
             (
@@ -75,11 +79,11 @@ def iter_tests(
         files_and_scenario_fns.extend(result)
 
     runner.run(
-            files=files,
-            steps=steps,
-            context_maker=context_maker,
-            executor=execute_file,
-            reporter=gather,
+        files=files,
+        steps=steps,
+        context_maker=context_maker,
+        executor=execute_file,
+        reporter=gather,
     )
 
     for file, scenario_fns in files_and_scenario_fns:

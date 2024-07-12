@@ -24,7 +24,7 @@ example_file = rumex.InputFile(
 
             Then the total price is 24.8
     ''',
-    uri='A unique identifier',
+    uri="A unique identifier",
 )
 
 steps = rumex.StepMapper()
@@ -32,29 +32,29 @@ steps = rumex.StepMapper()
 
 @dataclass
 class Context:
-
     total_price_before_discount: float | None = None
     discount: float | None = None
 
 
-@steps(r'Given data')
+@steps(r"Given data")
 def store_price(*, context: Context, data):
     context.total_price_before_discount = sum(
-        int(row['Units']) * float(row['Price']) for row in data
+        int(row["Units"]) * float(row["Price"]) for row in data
     )
 
 
-@steps(r'modifiers')
+@steps(r"modifiers")
 def store_discount(*, context: Context, data):
-    context.discount = json.loads(data)['discount_pc'] / 100
+    context.discount = json.loads(data)["discount_pc"] / 100
 
 
-@steps(r'total price is (\d+\.\d+)')
+@steps(r"total price is (\d+\.\d+)")
 def claculate_result(expected_result: float, *, context: Context):
     assert context.total_price_before_discount is not None
     assert context.discount is not None
     assert expected_result == context.total_price_before_discount * (
-            1 - context.discount)
+        1 - context.discount
+    )
 
 
 rumex.run(
