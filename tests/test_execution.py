@@ -1,16 +1,13 @@
 import json
 import textwrap
 
-from rumex.parsing.parser import InputFile
+from rumex import InputFile, StepMapper, run
 
 from .test_no_execution_cases import Reporter
 
-# Happy to fail at runtime with this
-# pylint: disable=unbalanced-tuple-unpacking
 
-
-def test_scenario_with_examples(run, get_step_mapper, **_):
-    text = textwrap.dedent('''
+def test_scenario_with_examples():
+    text = textwrap.dedent("""
         Scenario: 2 examples, 2 vars
 
         Given <my_var>
@@ -20,23 +17,23 @@ def test_scenario_with_examples(run, get_step_mapper, **_):
             | my_var | your_var |
             |   1234 | 5678     |
             |   3456 | 7890     |
-    ''')
-    uri = 'test_file'
+    """)
+    uri = "test_file"
 
     reporter = Reporter()
-    steps = get_step_mapper()
+    steps = StepMapper()
 
     nums = []
 
-    @steps('Given (1234)')
+    @steps("Given (1234)")
     def given_a(_1234: int):
         nums.append(_1234)
 
-    @steps('Given (3456)')
+    @steps("Given (3456)")
     def given_b(_3456: int):
         nums.append(_3456)
 
-    @steps(r'And (\d+)')
+    @steps(r"And (\d+)")
     def given(num: int):
         nums.append(num)
 
@@ -46,14 +43,14 @@ def test_scenario_with_examples(run, get_step_mapper, **_):
         steps=steps,
     )
 
-    executed_file, = reporter.reported
+    (executed_file,) = reporter.reported
     scenario_1, scenario_2 = executed_file.scenarios
     assert scenario_1.success
     assert scenario_2.success
     assert nums == [1234, 5678, 3456, 7890]
 
 
-def test_scenario_with_examples_in_step_data(run, get_step_mapper, **_):
+def test_scenario_with_examples_in_step_data():
     text = textwrap.dedent('''
         Scenario: Variables in table values or text blocks are fine
 
@@ -77,28 +74,27 @@ def test_scenario_with_examples_in_step_data(run, get_step_mapper, **_):
             |     0 |      0.1 |    0.9 |
             |     2 |      0.2 |      4 |
     ''')
-    uri = 'test_file'
+    uri = "test_file"
 
     reporter = Reporter()
-    steps = get_step_mapper()
+    steps = StepMapper()
 
     class Context:
-
         def __init__(self):
             self.discount = None
             self.total = None
 
-    @steps('Given stuff')
+    @steps("Given stuff")
     def given(*, context, data):
         context.total = sum(
-            int(row['price']) * int(row['quantity']) for row in data
+            int(row["price"]) * int(row["quantity"]) for row in data
         )
 
-    @steps('And discount')
+    @steps("And discount")
     def and_(*, context, data):
-        context.discount = json.loads(data)['value']
+        context.discount = json.loads(data)["value"]
 
-    @steps(r'final price is (\d\.?\d*)')
+    @steps(r"final price is (\d\.?\d*)")
     def calculate_result(result: float, *, context):
         assert result == (1 - context.discount) * context.total
 
@@ -109,7 +105,7 @@ def test_scenario_with_examples_in_step_data(run, get_step_mapper, **_):
         context_maker=Context,
     )
 
-    executed_file, = reporter.reported
+    (executed_file,) = reporter.reported
     scenario_1, scenario_2 = executed_file.scenarios
     assert scenario_1.success
     assert scenario_2.success

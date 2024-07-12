@@ -1,22 +1,22 @@
-from collections.abc import Iterable, Sequence
-from dataclasses import dataclass
-from typing import Any, Callable, Protocol, TypeAlias
 import inspect
 import re
+from collections.abc import Callable, Iterable, Sequence
+from dataclasses import dataclass
+from typing import Any, Protocol, TypeAlias
 
 from .parsing.core import InputFile, ParsedFile, ParserProto, Scenario
 from .parsing.parser import parse
 
 
-class RumexException(Exception):
+class RumexError(Exception):
     pass
 
 
-class HookAlreadyRegistered(RumexException):
+class HookAlreadyRegisteredError(RumexError):
     pass
 
 
-class MatchingFunctionNotFound(RumexException):
+class MatchingFunctionNotFoundError(RumexError):
     pass
 
 
@@ -39,12 +39,11 @@ class IgnoredStep(_ExecutedStep):
     success = False
 
 
-ExecutedStep: TypeAlias = FailedStep | PassedStep | IgnoredStep
+ExecutedStep: TypeAlias = FailedStep | PassedStep | IgnoredStep  # noqa: UP040
 
 
 @dataclass(frozen=True, kw_only=True)
 class ExecutedScenario:
-
     name: str
     description: str
     steps: Sequence[ExecutedStep]
@@ -66,7 +65,6 @@ class FailedScenario(ExecutedScenario):
 
 @dataclass(frozen=True, kw_only=True)
 class ExecutedFile:
-
     scenarios: tuple[ExecutedScenario, ...]
     uri: str
     name: str | None
@@ -93,34 +91,30 @@ class _Hook:
 
 
 class _Hooks:
-
     def __init__(self):
         self.run_before_step = None
         self.run_before_scenario = None
 
     def before_step(self, fn):
-        self._add_hook(fn, 'before_step')
+        self._add_hook(fn, "before_step")
 
     def before_scenario(self, fn):
-        self._add_hook(fn, 'before_scenario')
+        self._add_hook(fn, "before_scenario")
 
     def _add_hook(self, fn, hook_name):
-        run_hook_name = 'run_' + hook_name
-        # pylint: disable=comparison-with-callable
+        run_hook_name = "run_" + hook_name
+
         if getattr(self, run_hook_name) is None:
             setattr(self, run_hook_name, _Hook(name=hook_name, fn=fn))
         else:
-            raise HookAlreadyRegistered(hook_name)
+            raise HookAlreadyRegisteredError(hook_name)
 
 
 class ContextCallable(Protocol):
-
-    def __call__(self, context: Any) -> None:
-        ...
+    def __call__(self, context: Any) -> None: ...
 
 
 class ExecutableStep:
-
     def __init__(self, *, sentence: str, callable_: ContextCallable):
         self.sentence = sentence
         self._callable = callable_
@@ -131,15 +125,13 @@ class ExecutableStep:
 
 @dataclass(frozen=True, kw_only=True)
 class MissingStep:
-
     sentence: str
 
 
 class StepMapperProto(Protocol):
-
     def iter_steps(
-            self,
-            scenario: Scenario,
+        self,
+        scenario: Scenario,
     ) -> Iterable[ExecutableStep | MissingStep]:
         """Build callables representing steps of a scenario.
 
@@ -152,44 +144,44 @@ class StepMapperProto(Protocol):
 
 
 class ExecutorProto(Protocol):
-
     def __call__(
-            self,
-            parsed: ParsedFile,
-            /,
-            *,
-            steps: StepMapperProto,
-            context_maker: Callable[[], Any] | None,
+        self,
+        parsed: ParsedFile,
+        /,
+        *,
+        steps: StepMapperProto,
+        context_maker: Callable[[], Any] | None,
     ) -> ExecutedFile:
         """Run the tests."""
 
 
 def execute_scenario(
-        scenario,
-        *,
-        context_maker,
-        steps,
-        skip_scenario_tag,
+    scenario,
+    *,
+    context_maker,
+    steps,
+    skip_scenario_tag,
 ):
     executed_scenarios = []
     for example_num, scenario_steps in enumerate(
-            steps.iter_steps(scenario), start=1):
-
+        steps.iter_steps(scenario),
+        start=1,
+    ):
         if skip_scenario_tag in scenario.tags:
             cls = SkippedScenario
             executed_steps = []
         else:
             cls, executed_steps = _execute_scenario(
-                    steps=scenario_steps,
-                    context_maker=context_maker,
+                steps=scenario_steps,
+                context_maker=context_maker,
             )
 
         executed_scenario = cls(
-                name=scenario.name,
-                description=scenario.description,
-                steps=tuple(executed_steps),
-                tags=scenario.tags,
-                example_number=example_num,
+            name=scenario.name,
+            description=scenario.description,
+            steps=tuple(executed_steps),
+            tags=scenario.tags,
+            example_number=example_num,
         )
         executed_scenarios.append(executed_scenario)
     return executed_scenarios
@@ -204,7 +196,7 @@ def _execute_scenario(*, steps, context_maker):
         if isinstance(step_, MissingStep):
             failed = True
             executed = FailedStep(
-                exception=MatchingFunctionNotFound(step_.sentence),
+                exception=MatchingFunctionNotFoundError(step_.sentence),
                 sentence=step_.sentence,
             )
         elif failed:
@@ -212,11 +204,11 @@ def _execute_scenario(*, steps, context_maker):
         else:
             try:
                 step_(context=context)
-            except Exception as exc:  # pylint: disable=broad-except
+            except Exception as exc:  # noqa: BLE001
                 failed = True
                 executed = FailedStep(
-                        exception=exc,
-                        sentence=step_.sentence,
+                    exception=exc,
+                    sentence=step_.sentence,
                 )
             else:
                 executed = PassedStep(sentence=step_.sentence)
@@ -227,14 +219,14 @@ def _execute_scenario(*, steps, context_maker):
 
 
 def execute_file(
-        parsed_file: ParsedFile,
-        /,
-        *,
-        context_maker: Callable[[], Any] | None,
-        steps: StepMapperProto,
-        skip_scenario_tag: str | None = None,
+    parsed_file: ParsedFile,
+    /,
+    *,
+    context_maker: Callable[[], Any] | None,
+    steps: StepMapperProto,
+    skip_scenario_tag: str | None = None,
 ):
-    """Executed a single test file.
+    """Execute a single test file.
 
     Params
     ------
@@ -252,24 +244,23 @@ def execute_file(
         If a scenario in the `parsed_file` contains
         this tag, the scenario will not be executed.
     """
-
     context_maker = context_maker or (lambda: None)
     executed_scenarios: list[ExecutedScenario] = []
 
     for scenario in parsed_file.scenarios:
         executed = execute_scenario(
-                scenario,
-                steps=steps,
-                context_maker=context_maker,
-                skip_scenario_tag=skip_scenario_tag,
+            scenario,
+            steps=steps,
+            context_maker=context_maker,
+            skip_scenario_tag=skip_scenario_tag,
         )
         executed_scenarios.extend(executed)
 
     return ExecutedFile(
-            scenarios=tuple(executed_scenarios),
-            uri=parsed_file.uri,
-            name=parsed_file.name,
-            description=parsed_file.description,
+        scenarios=tuple(executed_scenarios),
+        uri=parsed_file.uri,
+        name=parsed_file.name,
+        description=parsed_file.description,
     )
 
 
@@ -289,15 +280,15 @@ def report(files):
                 raise step_.exception
 
 
-def run(
-        *,
-        files: Iterable[InputFile],
-        steps: StepMapperProto,
-        context_maker: Callable[[], Any] | None = None,
-        parser: ParserProto = parse,
-        executor: ExecutorProto = execute_file,
-        reporter=report,
-        map_=map,
+def run(  # noqa: PLR0913
+    *,
+    files: Iterable[InputFile],
+    steps: StepMapperProto,
+    context_maker: Callable[[], Any] | None = None,
+    parser: ParserProto = parse,
+    executor: ExecutorProto = execute_file,
+    reporter=report,
+    map_=map,
 ):
     """Entry point for running tests.
 
@@ -330,12 +321,12 @@ def run(
     """
     parsed_files = map_(parser, files)
     executed = map_(
-            lambda parsed_file: executor(
-                    parsed_file,
-                    steps=steps,
-                    context_maker=context_maker,
-            ),
-            parsed_files,
+        lambda parsed_file: executor(
+            parsed_file,
+            steps=steps,
+            context_maker=context_maker,
+        ),
+        parsed_files,
     )
     return reporter(executed)
 
@@ -356,8 +347,9 @@ class StepMapper:
 
         Raises
         ------
-        HookAlreadyRegistered:
+        HookAlreadyRegisteredError:
             When this decorator is used more than once.
+
         """
         return self._hooks.before_scenario(callable_)
 
@@ -370,13 +362,14 @@ class StepMapper:
 
         Raises
         ------
-        HookAlreadyRegistered:
+        HookAlreadyRegisteredError:
             When this decorator is used more than once.
+
         """
         return self._hooks.before_step(callable_)
 
     def __call__(self, pattern: str):
-        """Create decorator for registering steps.
+        r"""Create decorator for registering steps.
 
         For example, to register a function:
 
@@ -403,6 +396,7 @@ class StepMapper:
         Returns
         -------
         Decorator for registering a function as a step.
+
         """
         return lambda fn: self._add_step_fn(fn, pattern=pattern)
 
@@ -411,13 +405,12 @@ class StepMapper:
         return fn
 
     def _wrap_mapped_function(self, *, fn_spec, fn, mapped_args, data):
-
         def wrapped(context):
             kwargs = {}
-            if 'data' in fn_spec.kwonlyargs:
-                kwargs['data'] = data
-            if 'context' in fn_spec.kwonlyargs:
-                kwargs['context'] = context
+            if "data" in fn_spec.kwonlyargs:
+                kwargs["data"] = data
+            if "context" in fn_spec.kwonlyargs:
+                kwargs["context"] = context
             return fn(*mapped_args, **kwargs)
 
         return wrapped
@@ -429,55 +422,56 @@ class StepMapper:
                 spec = inspect.getfullargspec(fn)
                 mapped_args = [
                     spec.annotations.get(name, lambda x: x)(value)
-                    for name, value in zip(spec.args, args)
+                    for name, value in zip(spec.args, args, strict=False)
                 ]
                 return self._wrap_mapped_function(
                     fn_spec=spec,
                     fn=fn,
                     mapped_args=mapped_args,
                     data=data,
-                    )
+                )
 
         return None
 
     def iter_steps(
-            self,
-            scenario: Scenario,
+        self,
+        scenario: Scenario,
     ) -> Iterable[ExecutableStep | MissingStep]:
         """See documentation of `StepMapperProto`."""
         for example_data in scenario.examples_data or [{}]:
             yield self._iter_steps(scenario, example_data=example_data)
 
     def _iter_steps(self, scenario, example_data):
-        if (hook := self._hooks.run_before_scenario):
+        if hook := self._hooks.run_before_scenario:
             yield ExecutableStep(sentence=hook.name, callable_=hook.fn)
         for step_ in scenario.steps:
-            if (hook := self._hooks.run_before_step):
+            if hook := self._hooks.run_before_step:
                 yield ExecutableStep(sentence=hook.name, callable_=hook.fn)
 
             sentence = self._evaluate_sentence(
-                    template=step_.sentence,
-                    example_data=example_data,
+                template=step_.sentence,
+                example_data=example_data,
             )
             data = self._evaluate_step_data(
-                    template=step_.data,
-                    example_data=example_data,
+                template=step_.data,
+                example_data=example_data,
             )
 
             callable_ = self._prepare_step(sentence=sentence, data=data)
 
             if callable_:
-                yield ExecutableStep(
-                        sentence=sentence, callable_=callable_)
+                yield ExecutableStep(sentence=sentence, callable_=callable_)
             else:
                 yield MissingStep(sentence=sentence)
 
     def _evaluate_sentence(self, *, template, example_data):
         return self._evaluate_line(
-                template=template, example_data=example_data)
+            template=template,
+            example_data=example_data,
+        )
 
     def _evaluate_line(self, template: str, *, example_data) -> str:
-        pattern = re.compile(r'(?:^|[^\\])(?:\\\\)*(<(\w+)>)')
+        pattern = re.compile(r"(?:^|[^\\])(?:\\\\)*(<(\w+)>)")
         line = template
         while match_ := re.search(pattern, line):
             _, end = match_.span()
@@ -493,27 +487,33 @@ class StepMapper:
 
         if isinstance(template, str):
             return self._evaluate_step_text(
-                    template, example_data=example_data)
+                template,
+                example_data=example_data,
+            )
 
         return self._evaluate_step_data_table(
-                template, example_data=example_data)
+            template,
+            example_data=example_data,
+        )
 
     def _evaluate_step_text(self, template, *, example_data):
-        return '\n'.join(
-                self._evaluate_line(line, example_data=example_data)
-                for line in template.splitlines()
+        return "\n".join(
+            self._evaluate_line(line, example_data=example_data)
+            for line in template.splitlines()
         )
 
     def _evaluate_step_data_table(
-            self,
-            table_template: Sequence[dict[str, str]],
-            *,
-            example_data,
+        self,
+        table_template: Sequence[dict[str, str]],
+        *,
+        example_data,
     ) -> tuple[dict[str, str], ...]:
         return tuple(
             {
-                self._evaluate_line(key, example_data=example_data):
-                    self._evaluate_line(value, example_data=example_data)
+                self._evaluate_line(
+                    key,
+                    example_data=example_data,
+                ): self._evaluate_line(value, example_data=example_data)
                 for key, value in row.items()
             }
             for row in table_template

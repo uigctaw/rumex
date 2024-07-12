@@ -1,5 +1,6 @@
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Protocol, Sequence
+from typing import Protocol
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -24,14 +25,12 @@ class InputFile:
 
 @dataclass(frozen=True, kw_only=True)
 class Step:
-
     sentence: str
     data: Sequence[dict[str, str]]
 
 
 @dataclass(frozen=True, kw_only=True)
 class Scenario:
-
     name: str
     description: str | None
     steps: Sequence[Step]
@@ -41,7 +40,6 @@ class Scenario:
 
 @dataclass(frozen=True, kw_only=True)
 class ParsedFile:
-
     name: str | None
     description: str | None
     scenarios: Sequence[Scenario]
@@ -49,6 +47,5 @@ class ParsedFile:
 
 
 class ParserProto(Protocol):
-
     def __call__(self, input_file: InputFile, /) -> ParsedFile:
         """Build test files."""
